@@ -50,7 +50,7 @@ All Web ↔ Native calls go through `lib/bridge/js_bridge.dart`. Message schema 
 | `qr.scan` | real | `mobile_scanner` in a full-screen modal via `rootNavigatorKeyProvider` |
 | `file.pickArticle` | real | `file_picker` filtered to PDF/TXT/MD, returns `{path, name, sizeBytes, previewBase64}` |
 | `storage.get` / `set` / `delete` | real | `flutter_secure_storage` — JWT access + refresh, push preferences |
-| `sns.login` | scaffolded | `flutter_facebook_auth` declared in `pubspec.yaml`; `sns_auth_service.dart` is still the Phase 1 mock. Wiring the real SDK call is the remaining Phase 4 mobile task |
+| `sns.login` | real (needs app IDs) | Facebook via `flutter_facebook_auth` native SDK; LinkedIn via `url_launcher` custom tab — host app forwards the deep-link callback back into the bridge reply |
 | `push.requestPermission` / `push.token` | real (needs Firebase config) | `firebase_messaging` — graceful no-op when config is missing |
 | `localdb.matches.list` / `save` | real (needs codegen) | Isar schemas in `lib/storage/isar_db.dart`; generated `isar_db.g.dart` must be produced by `build_runner` |
 | `app.info` | real | `Platform` + `AppConfig.appVersion` |
@@ -95,7 +95,7 @@ lib/
     file_picker_service.dart   file_picker
     secure_storage_service.dart  flutter_secure_storage
     push_service.dart          firebase_messaging with graceful no-config fallback
-    sns_auth_service.dart      Phase 1 mock (to be replaced with flutter_facebook_auth)
+    sns_auth_service.dart      flutter_facebook_auth + LinkedIn custom-tab via url_launcher
   storage/
     isar_db.dart               Isar schemas + accessors; requires build_runner codegen
 assets/                        bundled demo article for stub file picker
@@ -108,4 +108,4 @@ flutter analyze
 flutter test
 ```
 
-Widget tests for bridge integration and an integration test per real native service are on the backlog.
+Widget-level coverage lives under `test/` — [`test/bridge/js_bridge_test.dart`](test/bridge/js_bridge_test.dart) exercises the dispatch table (unknown type, storage.set) with hand-rolled test doubles so no plugin platform channels are touched. Integration tests per real native service (geolocator, mobile_scanner, firebase_messaging) are on the backlog and require a device runner.

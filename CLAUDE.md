@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-All five phases of the implementation plan have landed as code in `main`:
+All five phases of the implementation plan plus the follow-up code-completion round have landed in `main`:
 
 - **Phase 0** — CI, Playwright smoke test, OpenAPI 3.1 spec.
 - **Phase 1** — Spring Boot backend (Auth + Profile), RS256 JWT + rotating refresh, Flyway V1–V2.
-- **Phase 2** — Events + Interests + Matching, PostGIS vicinity, TF-IDF similarity, async recompute.
-- **Phase 3** — STOMP over WebSocket chat (JWT CONNECT auth), push outbox, device registration, mobile `firebase_messaging` + `geolocator` + `mobile_scanner`.
-- **Phase 4** — SNS OAuth (Facebook, LinkedIn) with AES-256-GCM tokens, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter.
-- **Phase 5** — `X-Request-Id` + JSON logs, Micrometer + OTel, 7 Prometheus alerts, Grafana dashboard, Helm chart, runbooks.
+- **Phase 2** — Events + Interests + Matching, PostGIS vicinity, TF + optional OpenNLP keyword extractors, async recompute, HMAC-signed QR tokens alongside the legacy hash.
+- **Phase 3** — STOMP over WebSocket chat (JWT CONNECT auth), multi-pod fan-out via `RedisChatRelay`, push outbox with `FcmPushGateway` + `ApnsPushGateway` + logging fallback routed by `PushGatewayRouter`, idempotent chat send.
+- **Phase 4** — SNS OAuth (Facebook, LinkedIn) with AES-256-GCM tokens + scheduled enrichment job, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter, `audit_log` writes on every actionable path, `PiiScrubber` in logs.
+- **Phase 5** — `X-Request-Id` + JSON logs with PII masking, Micrometer + OTel, 7 Prometheus alerts, Grafana dashboard, Helm chart (incl. optional Redis Sentinel + NetworkPolicy), Terraform modules (VPC/RDS/Redis/S3/KMS/Route53/ACM), contract + security CI gates, k6 load scenarios, runbooks.
 
-Several items from the plan were authored as compiling skeletons rather than production wiring — see the "Gaps" section below before assuming something is ready for prod.
+What remains is external-only: real Firebase / OAuth / APNs credentials, `flutter create` + Gradle wrapper + Isar codegen on a dev machine, AWS account provisioning, store submissions. See [Environment gaps](#environment-gaps-cannot-be-done-from-code-alone).
 
 ## Commands
 
@@ -38,7 +38,7 @@ gradle wrapper --gradle-version 8.10
 ./gradlew :app:bootJar            # produces app/build/libs/sns-backend.jar
 ```
 
-Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123456`. `sns.dev.seed-events=true` seeds the `NEURIPS2026` demo event idempotently.
+Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123456`. `sns.dev.seed-events=true` seeds the `NEURIPS2026` demo event idempotently. `sns.rate-limit.backend=memory` (default) runs the fixed-window limiter in-process — flip to `redis` for multi-pod prod. `sns.chat.relay` defaults to `redis` (requires Redis on the classpath connection) — flip to `inproc` for tests or local single-node runs. See [backend/README.md](backend/README.md#configuration-reference) for the full property list.
 
 ### Mobile (`cd mobile`)
 ```bash
@@ -109,15 +109,18 @@ The most non-obvious system in this repo. Every cross-boundary call uses `{ id, 
 - **Axios** (`web/lib/api/axios.ts`): injects `Authorization: Bearer <jwt>` from bridge storage; on 401 silently hits `/api/auth/refresh` and retries once.
 
 ### Realtime (Phase 3)
-STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Current implementation uses Spring `ApplicationEvent` for fan-out — it works single-pod; multi-pod fan-out requires switching the listener to Redis Pub/Sub (see Gaps).
+STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Fan-out goes through `ChatRelay` — `RedisChatRelay` is the default (`sns.chat.relay=redis`) and publishes each persisted message to `ws:chat:{userId}` channels that every backend instance subscribes to; `InProcessChatRelay` (`sns.chat.relay=inproc`) bypasses Redis for single-pod / tests.
 
 ### Matching engine (Phase 2)
-- `KeywordExtractor` (in `:interest`) tokenises text, strips stopwords, returns an L2-normalised TF vector as JSONB `{keyword: weight}`. Intentionally dependency-free — the plan's OpenNLP+RAKE pipeline is a future swap behind the same interface.
+- `KeywordExtractor` (in `:interest`) is an interface with two implementations: `TfKeywordExtractor` (dependency-free TF + stopwords; default) and `OpenNlpKeywordExtractor` (`@Primary` when `sns.nlp.models-dir` is set — tokenizer → POS filter → lemmatizer → RAKE-style bigram boost). Both return an L2-normalised weight vector stored as JSONB `{keyword: weight}`.
 - `MatchingService.recompute(eventId)` builds one vector per user (sum-then-normalise of their interests), cosine-compares every canonical pair (`user_id_a < user_id_b`), and upserts rows with similarity ≥ 0.05.
-- Triggers: a `@Scheduled` sweep every ~3 min (configurable), plus `@TransactionalEventListener(AFTER_COMMIT)` on participation and interest changes. A new match publishes `MatchFound` which `NotificationService` turns into push outbox rows.
+- Triggers: a `@Scheduled` sweep every ~3 min (configurable), plus `@TransactionalEventListener(AFTER_COMMIT)` on participation and interest changes. A new match publishes `MatchFound`, which `NotificationService` turns into push outbox rows.
+
+### Vicinity cache (Phase 2, hardened in the completion round)
+`VicinityService.matchesInRadius` is `@Cacheable(cacheNames="vicinity")` with a 10-s TTL (Redis-backed via `CacheConfig`). Cache is evicted on `LocationUpdated` (posted after a location fix commits) and on `MatchRecomputeRequested` so the next read sees fresh similarity rows. Location ingest itself is server-side-throttled: fixes within 30 s AND < 10 m of the previous are rejected silently and increment `sns_location_throttled`.
 
 ### Push pipeline (Phase 3)
-Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default) → `PushGateway.deliver`. Default gateway is `LoggingPushGateway`; real FCM/APNs is wired by providing a bean that implements `PushGateway`. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`.
+Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default) → `PushGatewayRouter.deliver`. The router dispatches by `DeviceTokenEntity.Platform`: ANDROID/WEB → `FcmPushGateway` (firebase-admin; `@ConditionalOnProperty` on `sns.push.fcm.credentials-json`), IOS → `ApnsPushGateway` (pushy; `@ConditionalOnProperty` on `sns.push.apns.team-id`). `LoggingPushGateway` is always registered as a fallback. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`.
 
 ### GDPR (Phase 4)
 - `GET /api/users/me/export` streams a ZIP with profile.json, interests, matches, chat-threads + chat-messages, sns-links, manifest. The aggregator lives in `:app` so it can reach every module.

@@ -4,15 +4,15 @@ Spring Boot 3.3 / Java 21 multi-module implementation per [docs/SNS-system.md §
 
 ## Status
 
-All five phases have code in `main`; known deferrals documented in [`/CLAUDE.md`](../CLAUDE.md#gaps-known-intentional).
+All five phases plus the follow-up code-completion round are in `main`. Remaining work is environment-only — see [`/CLAUDE.md`](../CLAUDE.md#environment-gaps-cannot-be-done-from-code-alone).
 
 | Phase | Highlights |
 |---|---|
-| 1 | Auth (register/verify/complete/login/refresh/logout), Profile, RS256 JWT + rotating refresh, JWKS, BCrypt(12), Flyway V1–V2, RFC 7807 handler |
-| 2 | Events + Interests + Matching, PostGIS vicinity (`ST_DWithin` + 5-min freshness), TF-IDF similarity, async recompute, Flyway V3–V5 |
-| 3 | STOMP over WebSocket with JWT CONNECT interceptor, chat REST + WS fan-out, push outbox with at-least-once drain, device registration, `MatchFound`/`ChatMessageSent` domain events, Flyway V6 |
-| 4 | SNS OAuth (Facebook, LinkedIn) with AES-256-GCM token crypto, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter, Flyway V7 |
-| 5 | `X-Request-Id` filter, JSON logs (logstash-encoder), Micrometer + OTel OTLP, 7 Prometheus alert rules, Grafana dashboard, Helm chart (Deployment/HPA/PDB/Ingress/CronJob), runbooks |
+| 1 | Auth (register/verify/complete/login/refresh/logout), Profile, RS256 JWT + rotating refresh, JWKS, BCrypt(12), Flyway V1–V2, RFC 7807 handler, `AuditLogger` on every auth path |
+| 2 | Events + Interests + Matching, PostGIS vicinity (`ST_DWithin` + 5-min freshness, Redis-cached 10s), TF or OpenNLP keyword extraction, async recompute, HMAC-signed QR tokens, server-side location throttle, Flyway V3–V5 |
+| 3 | STOMP over WebSocket with JWT CONNECT interceptor, multi-pod `RedisChatRelay` (Pub/Sub) or `InProcessChatRelay`, idempotent chat send, push outbox routed by `PushGatewayRouter` to `FcmPushGateway` / `ApnsPushGateway` / `LoggingPushGateway`, Flyway V6 + V8 |
+| 4 | SNS OAuth (Facebook, LinkedIn) with AES-256-GCM token crypto + scheduled `SnsEnrichmentJob`, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter, Flyway V7 |
+| 5 | `X-Request-Id` filter, JSON logs with `PiiScrubber` masking, Micrometer + OTel OTLP, 7 Prometheus alert rules, Grafana dashboard, Helm chart (Deployment/HPA/PDB/Ingress/CronJob/Redis StatefulSet/NetworkPolicy), Terraform modules, runbooks, k6 load scenarios |
 
 ## Module layout
 
@@ -20,24 +20,36 @@ All five phases have code in `main`; known deferrals documented in [`/CLAUDE.md`
 backend/
 ├── app/            Spring Boot bootstrap, Flyway, Docker, global exception handler,
 │                   GDPR export aggregator, HardDeleteJob, RequestIdFilter,
-│                   SecurityHeadersFilter, RateLimitFilter, DevSeedRunner.
+│                   SecurityHeadersFilter, RateLimitFilter (+ InMemory / Redisson impls),
+│                   CacheConfig (Redis vicinity cache), DevSeedRunner,
+│                   PiiMaskingMessageJsonProvider + %piiMsg converter.
 ├── common/         Shared DTOs (RFC 7807 Problem) + domain events
-│                   (MatchRecomputeRequested, UserInterestsChanged, MatchFound, ChatMessageSent).
+│                   (MatchRecomputeRequested, UserInterestsChanged, MatchFound,
+│                    ChatMessageSent, LocationUpdated).
 ├── identity/       Auth endpoints, JWT (RS256), JWKS, Spring Security filter chain,
-│                   RefreshTokenService, VerificationService + MailHog.
+│                   RefreshTokenService, VerificationService + MailHog, AuditLogger,
+│                   PiiScrubber, AuditLogEntity / repo.
 ├── profile/        Profile CRUD + soft-delete, registration-time ProfileWriter hook.
 ├── event/          Events + participations (PostGIS geography),
-│                   QrCodeService (SHA-256 + HMAC helper), VicinityService.
-├── interest/       Interests + KeywordExtractor (TF + stopwords, dependency-free),
+│                   QrCodeService (SHA-256 hash + HMAC-signed token issue/verify),
+│                   VicinityService (@Cacheable, event-evicted), EventService with
+│                   server-side location throttle.
+├── interest/       KeywordExtractor interface + TfKeywordExtractor (default)
+│                   + OpenNlpKeywordExtractor (@Primary when sns.nlp.models-dir is set),
 │                   ArticleStorageService (S3/MinIO with in-memory fallback).
 ├── matching/       SimilarityEngine (cosine), MatchingService
-│                   (scheduled sweep + event-triggered recompute).
-├── chat/           ChatService, REST controller, STOMP WebSocket config,
-│                   StompJwtChannelInterceptor, ChatWsController fan-out.
+│                   (scheduled sweep + event-triggered recompute), MatchFound publisher.
+├── chat/           ChatService (idempotent send), REST controller, STOMP WebSocket
+│                   config, StompJwtChannelInterceptor, ChatRelay iface +
+│                   RedisChatRelay (Pub/Sub default) / InProcessChatRelay,
+│                   ChatWsController.
 ├── notification/   DeviceToken + PushOutbox entities, NotificationService drain,
-│                   PushGateway interface, LoggingPushGateway default.
+│                   PushGateway interface, PushGatewayRouter (@Primary),
+│                   FcmPushGateway (firebase-admin) + ApnsPushGateway (pushy)
+│                   + LoggingPushGateway fallback.
 └── sns/            SnsController (link/callback/unlink), SnsService (OAuth exchange
-                    with dev-stub fallback), AesGcmCipher (AES-256-GCM).
+                    with dev-stub fallback), SnsEnrichmentJob (@Scheduled),
+                    AesGcmCipher (AES-256-GCM).
 
 openapi.yaml at app/src/main/resources/openapi.yaml — single source of truth.
 ```
@@ -128,9 +140,14 @@ curl -sS -H "Authorization: Bearer $ACCESS" localhost:8080/api/users/me/export -
 ./gradlew :app:integrationTest    # Testcontainers flows (Docker required)
 ```
 
+Integration tests all extend [`IntegrationTestBase`](app/src/test/java/com/sns/app/support/IntegrationTestBase.java) (Postgres + Redis Testcontainers via `@ServiceConnection`):
+
 - [`AuthIntegrationTest`](app/src/test/java/com/sns/app/AuthIntegrationTest.java) — full register → verify → complete → profile loop.
 - [`EventAndMatchingIntegrationTest`](app/src/test/java/com/sns/app/EventAndMatchingIntegrationTest.java) — two users join, submit overlapping interests, post GPS fixes, vicinity returns the peer with similarity (awaits async recompute).
-- [`ChatIntegrationTest`](app/src/test/java/com/sns/app/ChatIntegrationTest.java) — chat send → history round-trip over REST.
+- [`ChatIntegrationTest`](app/src/test/java/com/sns/app/ChatIntegrationTest.java) — chat send → history round-trip over REST + WebSocket.
+- [`AuditLogIntegrationTest`](app/src/test/java/com/sns/app/AuditLogIntegrationTest.java) — canonical auth lifecycle emits `audit_log` rows with expected action names.
+
+Unit tests per module cover the pure-logic pieces: `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`, `AesGcmCipherTest`, `PiiScrubberTest`.
 
 ## Running in Docker
 
@@ -145,6 +162,7 @@ Builds from `backend/app/Dockerfile` and wires to Postgres + MailHog + Redis + M
 | Property / env | Default | Notes |
 |---|---|---|
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/conf` | |
+| `SPRING_DATA_REDIS_URL` | `redis://localhost:6379` | Feeds `StringRedisTemplate`, `RedisMessageListenerContainer`, and the Redisson client |
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | unset (dev ephemeral) | PEM-encoded PKCS#8 + X.509 |
 | `sns.jwt.access-token-ttl` | `PT15M` | |
 | `sns.jwt.refresh-token-ttl` | `P30D` | |
@@ -152,11 +170,25 @@ Builds from `backend/app/Dockerfile` and wires to Postgres + MailHog + Redis + M
 | `sns.dev.seed-events` | `true` | Seed demo event; set false in prod |
 | `sns.matching.sweep-interval-ms` | `180000` | Scheduled recompute cadence |
 | `sns.push.drain-interval-ms` | `5000` | Outbox drain cadence |
+| `sns.push.fcm.credentials-json` | unset | Firebase service-account JSON; when set, registers `FcmPushGateway` |
+| `sns.push.fcm.project-id` | unset | Optional override |
+| `sns.push.apns.team-id` / `.key-id` / `.bundle-id` / `.signing-key-pem` / `.sandbox` | unset | When team-id set, registers `ApnsPushGateway` |
+| `sns.chat.relay` | `redis` | `redis` (Pub/Sub fan-out) or `inproc` (single-pod / tests) |
+| `sns.rate-limit.backend` | `memory` | `memory` (in-process fixed-window) or `redis` (Redisson) |
+| `sns.rate-limit.register-per-ip-per-hour` | `5` | Budget for `POST /api/auth/register` |
+| `sns.location.throttle-seconds` | `30` | Min seconds between accepted GPS fixes |
+| `sns.location.throttle-min-move-meters` | `10` | Min distance between accepted fixes |
+| `sns.cache.vicinity-ttl-seconds` | `10` | Redis cache TTL for vicinity responses |
+| `sns.nlp.models-dir` | unset | Path to OpenNLP `en-token.bin` + `en-pos-maxent.bin` + `en-lemmatizer.dict`; when set, `OpenNlpKeywordExtractor` becomes `@Primary` |
+| `sns.enrichment.enabled` | `false` | Enable the 6-hourly SNS profile enrichment sweep |
+| `sns.enrichment.cron` | `0 15 */6 * * *` | Cron for the enrichment sweep |
+| `sns.enrichment.stale-hours` | `24` | Skip links refreshed within this window |
+| `sns.audit.ip-salt` | `dev-audit-ip-salt-change-me` | Salt applied before SHA-256 hashing of request IPs |
 | `sns.gdpr.hard-delete-grace-days` | `30` | Soft→hard delete age |
 | `sns.gdpr.hard-delete-cron` | `0 0 3 * * *` | Nightly sweep |
-| `sns.qr.hmac-key` | `dev-hmac-key-change-me` | Rotate in prod |
+| `sns.qr.hmac-key` | `dev-hmac-key-change-me` | Rotate in prod; see [docs/SECURITY.md](../docs/SECURITY.md) |
 | `sns.crypto.master-key` | `dev-sns-crypto-key-change-me` | AES-256-GCM key seed for SNS tokens; rotate via staged deploy |
-| `sns.oauth.{facebook,linkedin}.client-id` / `-secret` / `-redirect-uri` | unset | When unset, SNS callback returns a dev-stub link |
+| `sns.oauth.{facebook,linkedin}.client-id` / `-secret` / `-redirect-uri` / `-scopes` | unset | When unset, SNS callback returns a dev-stub link |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP target for traces |
 
 ## Wiring the web frontend
