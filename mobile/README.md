@@ -31,18 +31,18 @@ flutter run
 
 Override at build time with: `flutter run --dart-define=FRONTEND_ORIGIN=https://staging.example.com`.
 
-## Bridge stubs (pass 1)
+## Bridge services
 
-| Bridge message | Stub behaviour |
-|---|---|
-| `gps.start/stop` | logs only |
-| `qr.scan` | returns `{ eventCode: "NEURIPS2026" }` after a 400 ms dialog |
-| `file.pickArticle` | returns a fake path under `assets/sample.pdf` |
-| `storage.get/set/delete` | real `flutter_secure_storage` — persists across app restarts |
-| `sns.login` | returns a fake OAuth token |
-| `push.*` | returns granted + fake FCM token |
+| Bridge message | Status | Backing plugin |
+|---|---|---|
+| `gps.start/stop` | Phase 2 — real | `geolocator` — streams fixes via `gps.fix` events |
+| `qr.scan` | Phase 2 — real | `mobile_scanner` — full-screen modal scanner |
+| `file.pickArticle` | Phase 2 — real | `file_picker` — PDF/TXT/MD |
+| `storage.get/set/delete` | Phase 1 — real | `flutter_secure_storage` |
+| `sns.login` | Phase 4 — stub | Will wire `flutter_facebook_auth` + LinkedIn custom tab |
+| `push.*` | Phase 3 — stub | Will wire `firebase_messaging` |
 
-Pass 2 will replace these with real plugins (`geolocator`, `mobile_scanner`, `file_picker`, `firebase_messaging`, `flutter_facebook_auth`).
+Location fixes arrive on the web side as `window.addEventListener("flutter-bridge-event", ...)` with `detail.type === "gps.fix"`.
 
 ## Regenerating platform folders
 

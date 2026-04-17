@@ -67,6 +67,12 @@ class JsBridge {
         return _location.start(
           intervalSec: (p['intervalSec'] as num?)?.toInt() ?? 30,
           minMoveMeters: (p['minMoveMeters'] as num?)?.toDouble() ?? 10,
+          onFix: (fix) => sendEvent('gps.fix', {
+            'lat': fix.latitude,
+            'lon': fix.longitude,
+            'accuracyMeters': fix.accuracy,
+            'timestampMs': fix.timestamp.millisecondsSinceEpoch,
+          }),
         );
       case BridgeMessageTypes.gpsStop:
         return _location.stop();

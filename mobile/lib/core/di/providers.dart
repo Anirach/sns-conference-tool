@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -9,6 +10,9 @@ import '../../native/qr_scanner_service.dart';
 import '../../native/secure_storage_service.dart';
 import '../../native/sns_auth_service.dart';
 
+final rootNavigatorKeyProvider =
+    Provider<GlobalKey<NavigatorState>>((_) => GlobalKey<NavigatorState>());
+
 final secureStorageProvider =
     Provider<FlutterSecureStorage>((_) => const FlutterSecureStorage());
 
@@ -19,7 +23,7 @@ final locationServiceProvider =
     Provider<LocationService>((_) => LocationService());
 
 final qrScannerServiceProvider =
-    Provider<QrScannerService>((_) => QrScannerService());
+    Provider<QrScannerService>((ref) => QrScannerService(ref.read(rootNavigatorKeyProvider)));
 
 final filePickerServiceProvider =
     Provider<FilePickerService>((_) => FilePickerService());
