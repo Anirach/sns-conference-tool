@@ -1,8 +1,13 @@
+import { portraitUrlFor } from "../utils/avatar";
 import type { User } from "./types";
 
 export const CURRENT_USER_ID = "u-you-0001";
 
-export const currentUser: User = {
+function withPortrait<T extends { userId: string; profilePictureUrl: string | null }>(u: T): T {
+  return { ...u, profilePictureUrl: u.profilePictureUrl ?? portraitUrlFor(u.userId) };
+}
+
+export const currentUser: User = withPortrait({
   userId: CURRENT_USER_ID,
   email: "you@example.com",
   firstName: "Alex",
@@ -10,9 +15,9 @@ export const currentUser: User = {
   academicTitle: "PhD Candidate",
   institution: "ETH Zurich",
   profilePictureUrl: null
-};
+});
 
-export const otherUsers: User[] = [
+const rawOthers: User[] = [
   {
     userId: "u-0002",
     email: "alice.smith@mit.edu",
@@ -185,6 +190,8 @@ export const otherUsers: User[] = [
     profilePictureUrl: null
   }
 ];
+
+export const otherUsers: User[] = rawOthers.map(withPortrait);
 
 export const allUsers: User[] = [currentUser, ...otherUsers];
 

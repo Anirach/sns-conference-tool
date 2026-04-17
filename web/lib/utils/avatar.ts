@@ -17,3 +17,11 @@ export function colorFromName(name: string): string {
 export function initials(first: string, last: string): string {
   return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
 }
+
+const PORTRAIT_BG = "f0ebe1"; // ivory tone matching --surface-muted
+const PORTRAIT_STYLE = "notionists";
+const PORTRAIT_VERSION = "9.x";
+
+export function portraitUrlFor(seed: string): string {
+  return `https://api.dicebear.com/${PORTRAIT_VERSION}/${PORTRAIT_STYLE}/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${PORTRAIT_BG}&radius=0`;
+}
