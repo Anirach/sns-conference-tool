@@ -10,6 +10,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contract:
+    name: Contract (OpenAPI ⊇ MSW)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: OpenAPI vs MSW diff
+        run: bash tools/openapi-diff.sh
+
+  security:
+    name: Security (deps + audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: pnpm audit (web)
+        working-directory: web
+        run: pnpm audit --prod --audit-level high || true
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Gradle dependency-check (backend)
+        working-directory: backend
+        run: |
+          if [ -x ./gradlew ]; then
+            ./gradlew dependencyCheckAggregate --no-daemon || true
+          else
+            echo "::notice::Skipping dependency-check until Gradle wrapper is committed."
+          fi
+      - name: OWASP ZAP baseline
+        if: github.event_name == 'pull_request'
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ secrets.ZAP_BASELINE_TARGET || 'https://api.staging.sns.example.com' }}
+          fail_action: false
+
   web:
     name: Web (lint, typecheck, e2e)
     runs-on: ubuntu-latest

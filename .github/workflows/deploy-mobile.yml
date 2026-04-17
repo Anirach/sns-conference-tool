@@ -1,0 +1,69 @@
+name: Deploy mobile
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Which store?"
+        required: true
+        default: both
+        type: choice
+        options: [android, ios, both]
+
+# Mobile releases never auto-fire from main because signing keys + store credentials
+# are required; operators run this manually after a tag.
+
+concurrency:
+  group: deploy-mobile
+  cancel-in-progress: false
+
+jobs:
+  android:
+    if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'both' }}
+    name: Android (Play internal)
+    runs-on: ubuntu-latest
+    environment: mobile-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.22.x }
+      - name: Restore keystore
+        working-directory: mobile
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+          echo "storeFile=keystore.jks" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/key.properties
+      - name: Build AAB
+        working-directory: mobile
+        run: flutter build appbundle --release
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: "3.2", bundler-cache: true, working-directory: mobile/android }
+      - name: fastlane internal
+        working-directory: mobile/android
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane internal
+
+  ios:
+    if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'both' }}
+    name: iOS (TestFlight)
+    runs-on: macos-latest
+    environment: mobile-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: 3.22.x }
+      - name: Build iOS
+        working-directory: mobile
+        run: flutter build ipa --release --export-options-plist ios/ExportOptions.plist
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: "3.2", bundler-cache: true, working-directory: mobile/ios }
+      - name: fastlane beta
+        working-directory: mobile/ios
+        env:
+          APP_STORE_CONNECT_API_KEY_JSON: ${{ secrets.APP_STORE_CONNECT_API_KEY_JSON }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+        run: bundle exec fastlane beta

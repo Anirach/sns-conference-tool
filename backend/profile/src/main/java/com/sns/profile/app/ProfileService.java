@@ -1,5 +1,6 @@
 package com.sns.profile.app;
 
+import com.sns.identity.app.AuditLogger;
 import com.sns.identity.domain.UserEntity;
 import com.sns.identity.repo.UserRepository;
 import com.sns.profile.api.dto.UpdateProfileRequest;
@@ -17,10 +18,12 @@ public class ProfileService {
 
     private final ProfileRepository profiles;
     private final UserRepository users;
+    private final AuditLogger audit;
 
-    public ProfileService(ProfileRepository profiles, UserRepository users) {
+    public ProfileService(ProfileRepository profiles, UserRepository users, AuditLogger audit) {
         this.profiles = profiles;
         this.users = users;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +54,7 @@ public class ProfileService {
 
         UserEntity user = users.findById(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        audit.log("profile.update", userId, "profile", userId.toString());
         return toDto(user, profile);
     }
 
@@ -61,6 +65,7 @@ public class ProfileService {
         if (user.getDeletedAt() == null) {
             user.setDeletedAt(java.time.OffsetDateTime.now());
             users.save(user);
+            audit.log("profile.soft_delete", userId, "user", userId.toString());
         }
     }
 

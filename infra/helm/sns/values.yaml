@@ -35,6 +35,8 @@ env:
   # Actual secrets come from external-secrets / kustomize overlays; never committed.
   DATABASE_URL: ""
   REDIS_URL: ""
+  RATE_LIMIT_BACKEND: redis
+  CHAT_RELAY: redis
 
 podDisruptionBudget:
   minAvailable: 2
@@ -45,3 +47,14 @@ hardDelete:
 observability:
   prometheusScrape: true
   otelCollectorEndpoint: http://otel-collector.observability:4317
+
+redis:
+  inCluster: false        # set true to deploy the bundled StatefulSet (staging only)
+  replicas: 3
+  storageSize: 10Gi
+
+networkPolicy:
+  enabled: true
+  allow:
+    postgresCidr: 10.0.0.0/16
+    redisCidr: 10.0.0.0/16

@@ -1,0 +1,57 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sns-backend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sns-backend
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Postgres
+    - to:
+        {{- with .Values.networkPolicy.allow.postgresCidr }}
+        - ipBlock: { cidr: {{ . | quote }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+    # Redis
+    - to:
+        {{- with .Values.networkPolicy.allow.redisCidr }}
+        - ipBlock: { cidr: {{ . | quote }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 26379 }
+    # OTel collector
+    - to:
+        - namespaceSelector:
+            matchLabels: { name: observability }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    # FCM + APNs + provider OAuth (egress to internet 443)
+    - to:
+        - ipBlock: { cidr: 0.0.0.0/0, except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] }
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}

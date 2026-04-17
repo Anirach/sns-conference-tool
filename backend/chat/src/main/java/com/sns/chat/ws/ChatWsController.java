@@ -4,37 +4,37 @@ import com.sns.chat.api.dto.ChatDtos;
 import com.sns.chat.app.ChatService;
 import com.sns.common.events.ChatMessageSent;
 import java.util.UUID;
-import org.springframework.context.event.EventListener;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * STOMP controllers for chat.
  * <ul>
  *   <li>{@code /app/chat.send}       — persist + publish {@link ChatMessageSent}</li>
  *   <li>{@code /app/chat.markRead}   — mark a message read; echoes back to the sender</li>
- *   <li>{@code /user/queue/chat}     — inbound messages per user (server → client)</li>
+ *   <li>{@code /user/queue/chat}     — inbound messages per user (server → client, delivered via ChatRelay)</li>
  * </ul>
  */
 @Controller
 public class ChatWsController {
 
     private final ChatService service;
-    private final SimpMessagingTemplate template;
+    private final ChatRelay relay;
 
-    public ChatWsController(ChatService service, SimpMessagingTemplate template) {
+    public ChatWsController(ChatService service, ChatRelay relay) {
         this.service = service;
-        this.template = template;
+        this.relay = relay;
     }
 
     @MessageMapping("/chat.send")
     public void send(JwtAuthenticationToken auth, ChatDtos.SendRequest req) {
         UUID from = UUID.fromString(auth.getToken().getSubject());
         service.send(from, req);
-        // Persisted-and-fan-out is driven by ChatMessageSent domain event (below).
+        // Fan-out happens in onMessageSent after the persist transaction commits.
     }
 
     @MessageMapping("/chat.markRead")
@@ -45,8 +45,11 @@ public class ChatWsController {
         return req;
     }
 
-    /** Server-initiated fan-out after persistence. */
-    @EventListener
+    /**
+     * Server-initiated fan-out once the persist transaction commits. The injected ChatRelay is
+     * either InProcessChatRelay (tests / single pod) or RedisChatRelay (default, multi-pod).
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onMessageSent(ChatMessageSent event) {
         var dto = new ChatDtos.ChatMessage(
             event.messageId(),
@@ -57,8 +60,6 @@ public class ChatWsController {
             false,
             event.createdAt()
         );
-        // Deliver to both ends so sender sees its own echo (e.g. on a second device).
-        template.convertAndSendToUser(event.toUserId().toString(),   "/queue/chat", dto);
-        template.convertAndSendToUser(event.fromUserId().toString(), "/queue/chat", dto);
+        relay.deliver(dto);
     }
 }

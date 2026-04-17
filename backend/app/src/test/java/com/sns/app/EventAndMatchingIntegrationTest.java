@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sns.app.support.IntegrationTestBase;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Tag;
@@ -16,37 +17,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 @Tag("integration")
-@Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
-class EventAndMatchingIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-        DockerImageName.parse("postgis/postgis:15-3.4").asCompatibleSubstituteFor("postgres")
-    );
-
-    @DynamicPropertySource
-    static void dynamicProps(DynamicPropertyRegistry r) {
-        r.add("spring.mail.host", () -> "localhost");
-        r.add("spring.mail.port", () -> 1025);
-        r.add("sns.verification.dev-mode", () -> true);
-        r.add("sns.dev.seed-events", () -> true);
-        r.add("sns.matching.sweep-interval-ms", () -> "3600000");
-    }
+class EventAndMatchingIntegrationTest extends IntegrationTestBase {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;

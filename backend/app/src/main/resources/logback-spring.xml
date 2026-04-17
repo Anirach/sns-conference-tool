@@ -9,27 +9,47 @@
       Two appenders: CONSOLE_PLAIN during local dev (readable lines), CONSOLE_JSON in prod
       (shippable to Loki / ELK). The profile switch keeps stack traces structured without
       polluting local output with JSON.
+
+      Both appenders run messages through PiiScrubber so emails, JWTs, and high-precision
+      GPS coordinates are redacted before leaving the process.
     -->
+
+    <conversionRule conversionWord="piiMsg"
+                    converterClass="com.sns.app.config.PiiMaskingPatternConverter"/>
 
     <appender name="CONSOLE_PLAIN" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{36} - %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{36} - %piiMsg%n</pattern>
         </encoder>
     </appender>
 
     <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <customFields>{"app":"${APP_NAME}","env":"${PROFILE}"}</customFields>
-            <includeMdc>true</includeMdc>
-            <!-- PII masking: redact email addresses anywhere in a log line. -->
-            <fieldNames>
-                <timestamp>ts</timestamp>
-                <level>level</level>
-                <logger>logger</logger>
-                <thread>thread</thread>
-                <message>msg</message>
-                <stackTrace>stack</stackTrace>
-            </fieldNames>
+        <encoder class="net.logstash.logback.composite.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>ts</fieldName>
+                    <pattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</pattern>
+                </timestamp>
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+                <provider class="com.sns.app.config.PiiMaskingMessageJsonProvider"/>
+                <mdc/>
+                <stackTrace>
+                    <fieldName>stack</fieldName>
+                </stackTrace>
+                <pattern>
+                    <pattern>
+                        {"app": "${APP_NAME}", "env": "${PROFILE}"}
+                    </pattern>
+                </pattern>
+            </providers>
         </encoder>
     </appender>
 
@@ -42,7 +62,6 @@
         </springProfile>
     </root>
 
-    <!-- Framework noise -->
     <logger name="org.hibernate" level="WARN"/>
     <logger name="org.springframework.boot" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>

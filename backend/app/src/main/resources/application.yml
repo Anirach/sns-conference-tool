@@ -60,3 +60,11 @@ sns:
     from: ${MAIL_FROM:no-reply@sns.local}
   rate-limit:
     register-per-ip-per-hour: 5
+    backend: ${RATE_LIMIT_BACKEND:memory}    # memory | redis
+  chat:
+    relay: ${CHAT_RELAY:redis}               # redis | inproc
+  cache:
+    vicinity-ttl-seconds: 10
+  location:
+    throttle-seconds: 30
+    throttle-min-move-meters: 10

@@ -1,5 +1,6 @@
 package com.sns.sns.app;
 
+import com.sns.identity.app.AuditLogger;
 import com.sns.sns.crypto.AesGcmCipher;
 import com.sns.sns.domain.SnsLinkEntity;
 import com.sns.sns.domain.SnsLinkEntity.Provider;
@@ -35,13 +36,15 @@ public class SnsService {
     private final SnsLinkRepository repo;
     private final SnsOauthConfig cfg;
     private final AesGcmCipher cipher;
+    private final AuditLogger audit;
 
     private final ConcurrentMap<String, PendingState> pendingStates = new ConcurrentHashMap<>();
 
-    public SnsService(SnsLinkRepository repo, SnsOauthConfig cfg, AesGcmCipher cipher) {
+    public SnsService(SnsLinkRepository repo, SnsOauthConfig cfg, AesGcmCipher cipher, AuditLogger audit) {
         this.repo = repo;
         this.cfg = cfg;
         this.cipher = cipher;
+        this.audit = audit;
     }
 
     public record PendingState(UUID userId, Provider provider, OffsetDateTime expiresAt) {}
@@ -99,11 +102,15 @@ public class SnsService {
             row.setTokenExpiresAt(OffsetDateTime.now().plusSeconds(tokens.expiresInSeconds()));
         }
         repo.save(row);
+        audit.log("sns.link", userId, "sns_link", provider.name());
     }
 
     @Transactional
     public void unlink(UUID userId, Provider provider) {
-        repo.findByUserIdAndProvider(userId, provider).ifPresent(repo::delete);
+        repo.findByUserIdAndProvider(userId, provider).ifPresent(link -> {
+            repo.delete(link);
+            audit.log("sns.unlink", userId, "sns_link", provider.name());
+        });
     }
 
     /** Decrypt-on-read for background enrichment jobs. */

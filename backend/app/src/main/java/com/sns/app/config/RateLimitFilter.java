@@ -7,34 +7,23 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Per-IP rate limit on the unauthenticated {@code /api/auth/register} endpoint.
- * <p>
- * Fixed-window implementation backed by an in-memory map keyed by IP. Good enough for a single-pod
- * deployment — will be swapped for a Redis-backed bucket (Redisson) in Phase 4 when we have multi-pod
- * horizontal scale.
+ * Per-IP rate limit on the unauthenticated {@code /api/auth/register} endpoint. Counting is
+ * delegated to the injected {@link RateLimiter} — {@code InMemoryRateLimiter} by default,
+ * {@code RedissonRateLimiter} when {@code sns.rate-limit.backend=redis}.
  */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private final int maxPerHour;
+    private final RateLimiter limiter;
     private final ObjectMapper mapper;
-    private final Map<String, Window> windows = new ConcurrentHashMap<>();
 
-    public RateLimitFilter(
-        @Value("${sns.rate-limit.register-per-ip-per-hour:5}") int maxPerHour,
-        ObjectMapper mapper
-    ) {
-        this.maxPerHour = maxPerHour;
+    public RateLimitFilter(RateLimiter limiter, ObjectMapper mapper) {
+        this.limiter = limiter;
         this.mapper = mapper;
     }
 
@@ -43,14 +32,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         throws ServletException, IOException {
         if ("POST".equalsIgnoreCase(req.getMethod()) && "/api/auth/register".equals(req.getRequestURI())) {
             String ip = clientIp(req);
-            Window w = windows.compute(ip, (k, existing) -> {
-                Instant now = Instant.now();
-                if (existing == null || existing.start.isBefore(now.minus(Duration.ofHours(1)))) {
-                    return new Window(now, 1);
-                }
-                return new Window(existing.start, existing.count + 1);
-            });
-            if (w.count > maxPerHour) {
+            if (!limiter.tryAcquire(ip)) {
                 writeRateLimited(res);
                 return;
             }
@@ -73,6 +55,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
         return req.getRemoteAddr();
     }
-
-    private record Window(Instant start, int count) {}
 }

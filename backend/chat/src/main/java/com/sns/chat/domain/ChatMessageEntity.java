@@ -27,6 +27,9 @@ public class ChatMessageEntity {
     @Column(name = "read_flag", nullable = false)
     private boolean readFlag;
 
+    @Column(name = "client_message_id", length = 80)
+    private String clientMessageId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -48,5 +51,7 @@ public class ChatMessageEntity {
     public void setContent(String content) { this.content = content; }
     public boolean isReadFlag() { return readFlag; }
     public void setReadFlag(boolean readFlag) { this.readFlag = readFlag; }
+    public String getClientMessageId() { return clientMessageId; }
+    public void setClientMessageId(String clientMessageId) { this.clientMessageId = clientMessageId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

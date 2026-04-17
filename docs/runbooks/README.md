@@ -13,6 +13,13 @@ Each runbook follows the same shape: **Diagnose → Remediate → Escalate**.
 | `SnsJwtDecodeErrors` | [jwt-failures.md](jwt-failures.md) |
 | `SnsPushDeliveryFailure` | [push-failures.md](push-failures.md) |
 
+Operational procedures:
+
+| Procedure | Runbook |
+|---|---|
+| Deploy rollback | [deploy-rollback.md](deploy-rollback.md) |
+| DB restore (PITR / per-table) | [db-restore.md](db-restore.md) |
+
 ## Quick reference
 
 - **Dashboards**: Grafana `sns-overview` (`infra/grafana/sns-overview.json`).

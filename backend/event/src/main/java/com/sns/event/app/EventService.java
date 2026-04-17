@@ -7,6 +7,9 @@ import com.sns.event.domain.ParticipationEntity;
 import com.sns.event.domain.ParticipationId;
 import com.sns.event.repo.EventRepository;
 import com.sns.event.repo.ParticipationRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -14,6 +17,7 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,17 +34,28 @@ public class EventService {
     private final ParticipationRepository participations;
     private final QrCodeService qr;
     private final ApplicationEventPublisher publisher;
+    private final Counter throttledCounter;
+    private final long throttleSeconds;
+    private final double throttleMinMoveMeters;
 
     public EventService(
         EventRepository events,
         ParticipationRepository participations,
         QrCodeService qr,
-        ApplicationEventPublisher publisher
+        ApplicationEventPublisher publisher,
+        MeterRegistry meterRegistry,
+        @Value("${sns.location.throttle-seconds:30}") long throttleSeconds,
+        @Value("${sns.location.throttle-min-move-meters:10}") double throttleMinMoveMeters
     ) {
         this.events = events;
         this.participations = participations;
         this.qr = qr;
         this.publisher = publisher;
+        this.throttledCounter = Counter.builder("sns_location_throttled")
+            .description("Location ingest requests rejected by the server-side throttle")
+            .register(meterRegistry);
+        this.throttleSeconds = throttleSeconds;
+        this.throttleMinMoveMeters = throttleMinMoveMeters;
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +76,14 @@ public class EventService {
 
     @Transactional
     public EventDtos.JoinResponse join(UUID userId, String eventCode) {
-        EventEntity event = events.findByQrCodeHash(qr.hash(eventCode))
+        // Signed QR tokens carry a '.' between payload and signature. If present, verify first and
+        // fall back to the legacy hash lookup using the extracted plaintext.
+        String code = eventCode;
+        if (code != null && code.contains(".")) {
+            String verified = qr.tryVerify(code);
+            if (verified != null) code = verified;
+        }
+        EventEntity event = events.findByQrCodeHash(qr.hash(code))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
 
         if (event.isExpired()) {
@@ -88,17 +110,48 @@ public class EventService {
     }
 
     @Transactional
-    public void ingestLocation(UUID userId, UUID eventId, EventDtos.LocationRequest req) {
+    public boolean ingestLocation(UUID userId, UUID eventId, EventDtos.LocationRequest req) {
         ParticipationId id = new ParticipationId(userId, eventId);
         ParticipationEntity p = participations.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a participant"));
 
         Point pt = GEO.createPoint(new Coordinate(req.lon(), req.lat()));
         pt.setSRID(4326);
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // Server-side throttle — drop silently if the previous fix was recent AND the user
+        // hasn't moved meaningfully. Protects the DB and PostGIS index from chatty clients.
+        if (shouldThrottle(p, pt, now)) {
+            throttledCounter.increment();
+            return false;
+        }
+
         p.setLastPosition(pt);
         if (req.accuracyMeters() != null) p.setLastPositionAccM(req.accuracyMeters().floatValue());
-        p.setLastUpdate(OffsetDateTime.now());
+        p.setLastUpdate(now);
         participations.save(p);
+        publisher.publishEvent(new com.sns.common.events.LocationUpdated(eventId, userId));
+        return true;
+    }
+
+    private boolean shouldThrottle(ParticipationEntity p, Point incoming, OffsetDateTime now) {
+        if (p.getLastUpdate() == null || p.getLastPosition() == null) return false;
+        long secondsSince = Duration.between(p.getLastUpdate(), now).toSeconds();
+        if (secondsSince >= throttleSeconds) return false;
+        double movedMeters = haversineMeters(
+            p.getLastPosition().getY(), p.getLastPosition().getX(),
+            incoming.getY(), incoming.getX());
+        return movedMeters < throttleMinMoveMeters;
+    }
+
+    private static double haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+        double r = 6_371_000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+            + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+              * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     @Transactional

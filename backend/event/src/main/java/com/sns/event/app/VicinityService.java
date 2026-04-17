@@ -1,10 +1,15 @@
 package com.sns.event.app;
 
+import com.sns.common.events.LocationUpdated;
+import com.sns.common.events.MatchRecomputeRequested;
 import com.sns.event.api.dto.EventDtos.MatchDto;
 import java.sql.Array;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,12 +58,15 @@ public class VicinityService {
         """;
 
     private final JdbcTemplate jdbc;
+    private final CacheManager cacheManager;
 
-    public VicinityService(JdbcTemplate jdbc) {
+    public VicinityService(JdbcTemplate jdbc, CacheManager cacheManager) {
         this.jdbc = jdbc;
+        this.cacheManager = cacheManager;
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "vicinity", key = "#eventId + ':' + #userId + ':' + #radiusMeters")
     public List<MatchDto> matchesInRadius(UUID eventId, UUID userId, short radiusMeters) {
         return jdbc.query(QUERY, (rs, i) -> {
             UUID matchId = (UUID) rs.getObject("match_id");
@@ -82,6 +90,24 @@ public class VicinityService {
                 rs.getDouble("distance_meters")
             );
         }, userId, eventId, (double) radiusMeters);
+    }
+
+    /**
+     * Blanket evict on any event-level change. The cache key includes userId + radius so it
+     * holds many entries per event; clearing the whole cache occasionally is cheaper than
+     * tracking per-user keys and safer (never returns stale similarity for 10 s after a match
+     * upsert or fresh location fix).
+     */
+    @EventListener
+    public void onMatchRecompute(MatchRecomputeRequested e) {
+        var cache = cacheManager.getCache("vicinity");
+        if (cache != null) cache.clear();
+    }
+
+    @EventListener
+    public void onLocationUpdated(LocationUpdated e) {
+        var cache = cacheManager.getCache("vicinity");
+        if (cache != null) cache.clear();
     }
 
     private static String formatName(String first, String last) {

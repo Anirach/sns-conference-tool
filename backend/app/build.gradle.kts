@@ -37,6 +37,11 @@ dependencies {
     implementation("net.logstash.logback:logstash-logback-encoder:8.0")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-cache")
+    implementation("org.redisson:redisson-spring-boot-starter:3.34.1")
+    implementation("com.google.firebase:firebase-admin:9.3.0")
+    implementation("com.eatthepath:pushy:0.15.4")
+    implementation("org.apache.opennlp:opennlp-tools:2.3.3")
     implementation("org.hibernate.orm:hibernate-spatial")
     implementation("com.hypersistence:hypersistence-utils-hibernate-63:3.9.0")
 
@@ -45,6 +50,7 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.testcontainers:junit-jupiter:1.20.4")
     testImplementation("org.testcontainers:postgresql:1.20.4")
+    testImplementation("com.redis:testcontainers-redis:2.2.2")
     testImplementation("org.awaitility:awaitility:4.2.2")
 }
 

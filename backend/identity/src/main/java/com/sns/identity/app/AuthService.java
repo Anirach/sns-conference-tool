@@ -21,6 +21,7 @@ public class AuthService {
     private final RefreshTokenService refresh;
     private final PasswordEncoder passwordEncoder;
     private final ProfileWriter profileWriter;
+    private final AuditLogger audit;
 
     public AuthService(
         UserRepository users,
@@ -28,7 +29,8 @@ public class AuthService {
         SnsJwtService jwt,
         RefreshTokenService refresh,
         PasswordEncoder passwordEncoder,
-        ProfileWriter profileWriter
+        ProfileWriter profileWriter,
+        AuditLogger audit
     ) {
         this.users = users;
         this.verification = verification;
@@ -36,19 +38,23 @@ public class AuthService {
         this.refresh = refresh;
         this.passwordEncoder = passwordEncoder;
         this.profileWriter = profileWriter;
+        this.audit = audit;
     }
 
     @Transactional
     public void startRegistration(String email) {
         verification.startVerification(email.trim().toLowerCase());
+        audit.log("auth.register", null, "user", null);
     }
 
     @Transactional
     public AuthDtos.VerifyResponse verifyTan(String email, String tan) {
         var tokenOpt = verification.consumeTan(email.trim().toLowerCase(), tan);
         if (tokenOpt.isEmpty()) {
+            audit.log("auth.verify.failure", null);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "TAN invalid or expired");
         }
+        audit.log("auth.verify", null);
         return new AuthDtos.VerifyResponse(true, tokenOpt.get());
     }
 
@@ -68,19 +74,26 @@ public class AuthService {
 
         profileWriter.upsert(user.getUserId(), req.firstName(), req.lastName(), req.academicTitle(), req.institution());
 
+        audit.log("auth.complete", user.getUserId(), "user", user.getUserId().toString());
         return issueTokens(user.getUserId());
     }
 
     @Transactional
     public AuthDtos.AuthTokens login(String email, String password) {
         UserEntity user = users.findByEmailIgnoreCase(email.trim().toLowerCase())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+            .orElseThrow(() -> {
+                audit.log("auth.login.failure", null);
+                return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+            });
         if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            audit.log("auth.login.failure", user.getUserId());
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
         if (!user.isEmailVerified()) {
+            audit.log("auth.login.unverified", user.getUserId());
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email not verified");
         }
+        audit.log("auth.login", user.getUserId());
         return issueTokens(user.getUserId());
     }
 
@@ -88,6 +101,7 @@ public class AuthService {
     public AuthDtos.AuthTokens refresh(String presentedJti) {
         UUID jti = parseUuid(presentedJti);
         var next = refresh.rotate(jti);
+        audit.log("auth.refresh", next.getUserId());
         return new AuthDtos.AuthTokens(jwt.issueAccessToken(next.getUserId()), next.getJti().toString(), next.getUserId());
     }
 
@@ -96,6 +110,7 @@ public class AuthService {
         try {
             UUID jti = UUID.fromString(presentedJti);
             refresh.revoke(jti);
+            audit.log("auth.logout", null, "refresh_token", jti.toString());
         } catch (IllegalArgumentException ignored) {
             // Idempotent: logging out with a malformed token is a no-op.
         }

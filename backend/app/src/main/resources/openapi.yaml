@@ -9,7 +9,7 @@ info:
     This specification is the single source of truth for request/response
     shapes. When a real backend endpoint replaces a mock, the MSW handler
     is deleted and only this schema remains.
-  version: 0.1.0
+  version: 0.2.0
 servers:
   - url: /api
     description: Same-origin (default for the WebView)
@@ -450,6 +450,37 @@ paths:
                 messageId: { type: string, format: uuid }
       responses:
         "200": { description: Marked read }
+
+  /users:
+    get:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      summary: List users (debug-only; not exposed in production)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: User card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { description: Not found }
 
   /devices/register:
     post:

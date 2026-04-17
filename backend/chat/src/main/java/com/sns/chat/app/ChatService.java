@@ -34,17 +34,22 @@ public class ChatService {
         if (fromUserId.equals(req.toUserId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "cannot chat with self");
         }
+        // Idempotent replay: if the client reused a clientMessageId, return the original row.
+        if (req.clientMessageId() != null && !req.clientMessageId().isBlank()) {
+            var existing = repo.findByFromUserIdAndClientMessageId(fromUserId, req.clientMessageId());
+            if (existing.isPresent()) return toDto(existing.get());
+        }
         var m = new ChatMessageEntity();
         m.setEventId(req.eventId());
         m.setFromUserId(fromUserId);
         m.setToUserId(req.toUserId());
         m.setContent(req.content());
+        m.setClientMessageId(req.clientMessageId());
         var saved = repo.save(m);
-        var dto = toDto(saved);
         publisher.publishEvent(new com.sns.common.events.ChatMessageSent(
             saved.getMessageId(), saved.getEventId(), saved.getFromUserId(), saved.getToUserId(), saved.getContent(),
             saved.getCreatedAt()));
-        return dto;
+        return toDto(saved);
     }
 
     @Transactional

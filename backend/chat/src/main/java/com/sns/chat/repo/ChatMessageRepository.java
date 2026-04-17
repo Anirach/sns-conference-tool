@@ -3,12 +3,15 @@ package com.sns.chat.repo;
 import com.sns.chat.domain.ChatMessageEntity;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, UUID> {
+
+    Optional<ChatMessageEntity> findByFromUserIdAndClientMessageId(UUID fromUserId, String clientMessageId);
 
     @Query("""
         SELECT m FROM ChatMessageEntity m

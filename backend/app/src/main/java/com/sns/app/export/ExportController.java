@@ -3,6 +3,7 @@ package com.sns.app.export;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sns.chat.app.ChatService;
 import com.sns.chat.repo.ChatMessageRepository;
+import com.sns.identity.app.AuditLogger;
 import com.sns.interest.app.InterestService;
 import com.sns.matching.repo.SimilarityMatchRepository;
 import com.sns.profile.app.ProfileService;
@@ -37,6 +38,7 @@ public class ExportController {
     private final ChatMessageRepository chatMessages;
     private final ChatService chatService;
     private final SnsService snsService;
+    private final AuditLogger audit;
     private final ObjectMapper mapper;
 
     public ExportController(
@@ -46,6 +48,7 @@ public class ExportController {
         ChatMessageRepository chatMessages,
         ChatService chatService,
         SnsService snsService,
+        AuditLogger audit,
         ObjectMapper mapper
     ) {
         this.profiles = profiles;
@@ -54,12 +57,14 @@ public class ExportController {
         this.chatMessages = chatMessages;
         this.chatService = chatService;
         this.snsService = snsService;
+        this.audit = audit;
         this.mapper = mapper;
     }
 
     @GetMapping("/export")
     public ResponseEntity<StreamingResponseBody> export(JwtAuthenticationToken auth) {
         UUID userId = UUID.fromString(auth.getToken().getSubject());
+        audit.log("export.download", userId, "user", userId.toString());
 
         UserDto me = profiles.get(userId);
         var userInterests = interests.listFor(userId);

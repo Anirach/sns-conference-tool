@@ -138,29 +138,59 @@ Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`)
 - shadcn/ui components in `web/components/ui/` are owned source, not node_modules.
 - Java modules do not have circular deps: `:matching` depends on `:event` + `:interest`; cross-module hooks go through `com.sns.common.events.*` publish/subscribe. Do not add reverse deps — use a new domain event instead.
 
-## Gaps (known, intentional)
+## Gaps — closed in the code-completion round
 
-Before assuming a feature is production-ready, check the list in `docs/SNS-system.md`'s plan alignment (or ask). Specifically:
+Previously-deferred items that have now been authored (behind interfaces or config flags; see
+[`docs/SECURITY.md`](docs/SECURITY.md) and [`backend/README.md`](backend/README.md) for rotation
+and wiring notes):
 
-- WS fan-out uses Spring `ApplicationEvent` (single pod); Redis Pub/Sub relay is not wired.
-- Push queue uses a DB outbox (works, at-least-once), not Redis Streams + XACK.
-- Rate limiter on `/api/auth/register` is an in-memory `ConcurrentHashMap` (single pod), not Redisson.
-- `PushGateway` default is a logging stub; real FCM + APNs SDKs are not integrated.
-- QR codes use SHA-256 hash lookup; HMAC-signed tokens are reserved via `QrCodeService.hmac()` but not wired.
-- Keyword extraction is plain TF + stopword list; no OpenNLP/RAKE pipeline yet.
-- `audit_log` table exists; no `INSERT` paths wired in handlers yet.
-- No server-side throttle on `/api/events/{id}/location`.
-- Vicinity queries hit PostGIS every time; no Redis cache layer.
-- Helm chart does not include a Redis StatefulSet or NetworkPolicies.
-- No Terraform, no CI deploy/fastlane, no dependency-check, no OpenAPI diff gate.
-- No unit tests on `SimilarityEngine` / `KeywordExtractor` — only integration happy-paths.
-- Mobile SNS auth (`flutter_facebook_auth`) is declared in pubspec but `sns_auth_service.dart` is still the Phase 1 stub.
-- Isar local store needs `dart run build_runner build` to generate `isar_db.g.dart` — not committed.
+- WS fan-out: `ChatRelay` interface with `RedisChatRelay` (default, multi-pod) and
+  `InProcessChatRelay` (single-pod / test). Toggle via `sns.chat.relay`.
+- Rate limiter: `RateLimiter` interface with `RedissonRateLimiter` (prod) and
+  `InMemoryRateLimiter` (default). Toggle via `sns.rate-limit.backend`.
+- Server-side location throttle: `EventService.ingestLocation` rejects fixes within 30 s AND < 10 m
+  of the previous; emits `sns_location_throttled` counter.
+- Redis-cached vicinity: `@Cacheable(cacheNames="vicinity")` with a 10-s TTL, evicted on
+  `LocationUpdated` and `MatchRecomputeRequested`.
+- `audit_log` writes: `AuditLogger` service wired through auth / profile / sns / export paths; IPs
+  SHA-256-salted before persistence; payloads run through `PiiScrubber`.
+- PII-masking log encoder: `PiiMaskingMessageJsonProvider` (JSON mode) + `%piiMsg` pattern
+  converter (plain mode) redact emails, bearer tokens, JWTs, high-precision lat/lon.
+- Idempotent chat send: Flyway V8 adds `client_message_id`; `ChatService.send` dedupes replays.
+- Real FCM + APNs: `FcmPushGateway` (firebase-admin) + `ApnsPushGateway` (pushy) registered
+  conditionally; `PushGatewayRouter` dispatches by `DeviceTokenEntity.Platform`. Logging fallback
+  remains when no creds are configured.
+- OpenNLP/RAKE: `KeywordExtractor` is now an interface. `OpenNlpKeywordExtractor` is `@Primary`
+  when `sns.nlp.models-dir` is set; otherwise `TfKeywordExtractor` stays.
+- HMAC-signed QR tokens: `QrCodeService.issue(code, expiresAt)` + `verify(token)`.
+  `EventService.join` accepts both the signed form and the legacy hash form.
+- SNS enrichment: `SnsEnrichmentJob` runs every 6h when `sns.enrichment.enabled=true`, pulls
+  provider userinfo, writes to `sns_links.imported_data`.
+- Helm: `redis-statefulset.yaml` (Sentinel, 3 replicas, PVCs) and `networkpolicy.yaml`
+  (egress allow-list for DNS / Postgres / Redis / OTel / FCM / APNs / OAuth).
+- Terraform: `infra/terraform/modules/{vpc, rds-postgis, elasticache-redis, s3, kms, route53,
+  acm}` + `environments/{staging, prod}` composing them.
+- CI: `contract` job runs `tools/openapi-diff.sh`; `security` job runs `pnpm audit --prod`,
+  Gradle `dependencyCheckAggregate`, and OWASP ZAP baseline. `deploy-backend.yml`,
+  `deploy-web.yml`, `deploy-mobile.yml` workflows land the build output.
+- k6 scenarios: `infra/load/k6-vicinity.js` + `k6-chat.js`.
+- Unit tests: `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`,
+  `AesGcmCipherTest`, `PiiScrubberTest`.
+- Integration tests: `AuthIntegrationTest`, `EventAndMatchingIntegrationTest`,
+  `ChatIntegrationTest`, `AuditLogIntegrationTest` all share a Postgres + Redis Testcontainers
+  base. Multi-pod WS round-trip is wired by the base class (Redis container present), asserted by
+  the existing chat test set.
+- Mobile: `sns_auth_service.dart` wraps `flutter_facebook_auth` and a `url_launcher` custom tab
+  for LinkedIn.
 
-## Environment gaps (not code)
+## Environment gaps (cannot be done from code alone)
 
 - `flutter create` to materialise `mobile/ios/` + `mobile/android/`.
 - `gradle wrapper` to commit the wrapper jar.
-- Firebase project config (`google-services.json`, `GoogleService-Info.plist`) + APNs entitlements.
-- OAuth2 app registration (Facebook + LinkedIn client IDs, secrets, redirect URIs).
-- Staging deployment, k6/Gatling load runs, OWASP ZAP scan, accessibility audit, store submissions.
+- `dart run build_runner build` to materialise `mobile/lib/storage/isar_db.g.dart`.
+- Firebase project config (`google-services.json`, `GoogleService-Info.plist`) + APNs
+  entitlements + `.p8` signing key uploaded as a repo secret.
+- Facebook + LinkedIn OAuth app registration (client IDs, secrets, redirect URIs, app review).
+- AWS account + Terraform state bucket + external-secrets operator + PagerDuty / Sentry wiring.
+- Running k6 load scenarios, OWASP ZAP scan, and accessibility audit against a real staging
+  deployment. Store submission (App Store + Play Store).
