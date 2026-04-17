@@ -2,21 +2,30 @@
 
 Thin native shell around the Next.js web frontend per [docs/SNS-system.md §4](../docs/SNS-system.md).
 
-**Pass 1 scope**: bootable WebView + JS bridge dispatcher + stub native services. The UI lives entirely in the web layer.
+The UI lives entirely in the web layer; this module exists to give the web frontend access to device capabilities that browsers can't reach (foreground GPS, camera-based QR scanning, native file picker, secure storage, push notifications, OS-provided OAuth flows, on-device encrypted DB) through a single JSON message bridge.
 
-## Setup
+## First-time setup
+
+This repo keeps only `lib/`, `pubspec.yaml`, and `assets/` in git. Platform projects and code-generated files must be produced locally on first checkout:
 
 ```bash
+# 1. Generate ios/ + android/ projects (custom lib/ is preserved)
+flutter create --platforms=android,ios --project-name=sns_mobile .
+
+# 2. Code-gen for Isar schemas (produces lib/storage/isar_db.g.dart)
+dart run build_runner build --delete-conflicting-outputs
+
+# 3. Install dependencies
 flutter pub get
+
+# 4. iOS only — CocoaPods
+cd ios && pod install && cd ..
 ```
 
-### iOS-specific
-
-```bash
-cd ios
-pod install
-cd ..
-```
+Provisioning (not checked in):
+- **Firebase** — drop `google-services.json` into `android/app/` and `GoogleService-Info.plist` into `ios/Runner/`. Without these, `PushService.initialize()` returns `configured: false` and bridge push calls become no-ops (by design).
+- **APNs entitlement** — add `aps-environment` to `ios/Runner/Runner.entitlements`.
+- **OAuth client IDs** — set Facebook App ID in `android/app/src/main/AndroidManifest.xml` meta-data and iOS `Info.plist`. LinkedIn uses the custom-tab path via `url_launcher` against a redirect URI whose handler you configure on the backend (`sns.oauth.linkedin.redirect-uri`).
 
 ## Run
 
@@ -26,31 +35,77 @@ Start the web dev server first (`cd ../web && pnpm dev`), then:
 flutter run
 ```
 
-- **Android emulator** loads `http://10.0.2.2:3000` (the host machine's localhost seen from the emulator).
+- **Android emulator** loads `http://10.0.2.2:3000` (host's localhost as seen from the emulator).
 - **iOS simulator** loads `http://localhost:3000`.
 
-Override at build time with: `flutter run --dart-define=FRONTEND_ORIGIN=https://staging.example.com`.
+Override at build time: `flutter run --dart-define=FRONTEND_ORIGIN=https://staging.example.com`.
 
 ## Bridge services
 
-| Bridge message | Status | Backing plugin |
+All Web ↔ Native calls go through `lib/bridge/js_bridge.dart`. Message schema is `{ id, type, payload }`.
+
+| Bridge message | Status | Implementation |
 |---|---|---|
-| `gps.start/stop` | Phase 2 — real | `geolocator` — streams fixes via `gps.fix` events |
-| `qr.scan` | Phase 2 — real | `mobile_scanner` — full-screen modal scanner |
-| `file.pickArticle` | Phase 2 — real | `file_picker` — PDF/TXT/MD |
-| `storage.get/set/delete` | Phase 1 — real | `flutter_secure_storage` |
-| `sns.login` | Phase 4 — real (needs app IDs) | `flutter_facebook_auth`; LinkedIn via `url_launcher` custom-tab |
-| `push.*` | Phase 3 — real (needs Firebase config) | `firebase_messaging` — `Firebase.initializeApp` returns `configured: false` until `google-services.json` / `GoogleService-Info.plist` is provisioned |
-| `localdb.matches.*` | Phase 4 — real (needs codegen) | `isar` — run `dart run build_runner build` once to generate `isar_db.g.dart` |
+| `gps.start` / `gps.stop` | real | `geolocator` streams fixes; each fix is pushed back to web as `gps.fix` events (no request/response) |
+| `qr.scan` | real | `mobile_scanner` in a full-screen modal via `rootNavigatorKeyProvider` |
+| `file.pickArticle` | real | `file_picker` filtered to PDF/TXT/MD, returns `{path, name, sizeBytes, previewBase64}` |
+| `storage.get` / `set` / `delete` | real | `flutter_secure_storage` — JWT access + refresh, push preferences |
+| `sns.login` | scaffolded | `flutter_facebook_auth` declared in `pubspec.yaml`; `sns_auth_service.dart` is still the Phase 1 mock. Wiring the real SDK call is the remaining Phase 4 mobile task |
+| `push.requestPermission` / `push.token` | real (needs Firebase config) | `firebase_messaging` — graceful no-op when config is missing |
+| `localdb.matches.list` / `save` | real (needs codegen) | Isar schemas in `lib/storage/isar_db.dart`; generated `isar_db.g.dart` must be produced by `build_runner` |
+| `app.info` | real | `Platform` + `AppConfig.appVersion` |
 
-Location fixes arrive on the web side as `window.addEventListener("flutter-bridge-event", ...)` with `detail.type === "gps.fix"`.
+### Web → Native
 
-## Regenerating platform folders
-
-This repo contains only `lib/`, `pubspec.yaml`, and `assets/`. Run:
-
-```bash
-flutter create --platforms=android,ios --project-name=sns_mobile .
+```ts
+import { bridge } from "@/lib/bridge/client";
+await bridge.call<QrScanResult>("qr.scan");
 ```
 
-from inside `mobile/` once to generate `android/` and `ios/` directories. The custom `lib/` files will not be overwritten.
+### Native → Web
+
+Server-initiated events are dispatched as `CustomEvent`s on `window`:
+
+```ts
+window.addEventListener("flutter-bridge-event", (e) => {
+  const { type, payload } = (e as CustomEvent).detail;
+  if (type === "gps.fix") sendLocationToApi(payload);
+  if (type === "push.received") handleInboundNotification(payload);
+});
+```
+
+## Directory layout
+
+```
+lib/
+  app.dart, main.dart          app bootstrap + root navigator
+  core/
+    config/app_config.dart     env + version
+    di/providers.dart          Riverpod providers for every service
+    logging/                   talker wiring
+  bridge/
+    js_bridge.dart             JSON dispatcher; webview_flutter channel handler
+    bridge_messages.dart       message type constants
+  features/
+    splash/                    cold-start screen
+    webview/                   WebView host + controller
+  native/
+    location_service.dart      geolocator
+    qr_scanner_service.dart    mobile_scanner + full-screen modal
+    file_picker_service.dart   file_picker
+    secure_storage_service.dart  flutter_secure_storage
+    push_service.dart          firebase_messaging with graceful no-config fallback
+    sns_auth_service.dart      Phase 1 mock (to be replaced with flutter_facebook_auth)
+  storage/
+    isar_db.dart               Isar schemas + accessors; requires build_runner codegen
+assets/                        bundled demo article for stub file picker
+```
+
+## Tests
+
+```bash
+flutter analyze
+flutter test
+```
+
+Widget tests for bridge integration and an integration test per real native service are on the backlog.
