@@ -2,32 +2,56 @@
 
 import { LucideIcon } from "lucide-react";
 import { ReactNode } from "react";
-import { cn } from "@/lib/utils/cn";
+import { Button } from "./Button";
 
 interface EmptyStateProps {
-  icon?: LucideIcon;
+  icon?: LucideIcon | ReactNode;
   title: string;
   description?: string;
+  ctaLabel?: string;
+  onCta?: () => void;
   action?: ReactNode;
   className?: string;
+  eyebrow?: string;
 }
 
-export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
+function renderIcon(icon: EmptyStateProps["icon"]): ReactNode {
+  if (!icon) return null;
+  if (typeof icon === "function") {
+    const Icon = icon as LucideIcon;
+    return <Icon className="h-7 w-7" strokeWidth={1.4} />;
+  }
+  return icon;
+}
+
+export function EmptyState({
+  icon,
+  title,
+  description,
+  ctaLabel,
+  onCta,
+  action,
+  eyebrow = "Nota Bene"
+}: EmptyStateProps) {
+  const rendered = renderIcon(icon);
   return (
-    <div
-      className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center",
-        className
-      )}
-    >
-      {Icon ? (
-        <div className="rounded-full bg-gray-100 p-3 text-gray-500">
-          <Icon className="h-6 w-6" />
+    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      {rendered ? (
+        <div className="mb-6 grid h-16 w-16 place-items-center text-brass-500 hairline">
+          {rendered}
         </div>
       ) : null}
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-      {description ? <p className="max-w-sm text-sm text-gray-500">{description}</p> : null}
-      {action ? <div className="mt-2">{action}</div> : null}
+      <p className="eyebrow mb-2 text-brass-500">{eyebrow}</p>
+      <h3 className="font-serif text-2xl text-foreground">{title}</h3>
+      {description ? (
+        <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">{description}</p>
+      ) : null}
+      {ctaLabel && onCta ? (
+        <Button onClick={onCta} className="mt-6">
+          {ctaLabel}
+        </Button>
+      ) : null}
+      {action ? <div className="mt-6">{action}</div> : null}
     </div>
   );
 }

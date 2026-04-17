@@ -53,7 +53,7 @@ function LoginInner() {
       await setSession(data);
       router.push("/events/join");
     } catch {
-      toast({ title: "Login failed", variant: "error" });
+      toast({ title: "Admission refused", variant: "error" });
     }
   }
 
@@ -61,62 +61,98 @@ function LoginInner() {
     try {
       const { data } = await authApi.complete(values);
       await setSession(data);
-      toast({ title: "Account created", variant: "success" });
+      toast({ title: "Enrolment complete", variant: "success" });
       router.push("/interests");
     } catch {
-      toast({ title: "Could not create account", variant: "error" });
+      toast({ title: "Enrolment refused", variant: "error" });
     }
   }
 
   if (mode === "complete") {
     return (
-      <AppShell title="Complete profile" showBack hideTabs>
-        <form className="flex flex-col gap-4" onSubmit={completeForm.handleSubmit(onComplete)}>
-          <p className="text-sm text-gray-600">
-            Fill in your details so others can find you. You can change these later.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="First name" {...completeForm.register("firstName")} error={completeForm.formState.errors.firstName?.message} />
-            <Input label="Last name" {...completeForm.register("lastName")} error={completeForm.formState.errors.lastName?.message} />
-          </div>
-          <Input label="Academic title" placeholder="Prof. / Dr. / PhD candidate" {...completeForm.register("academicTitle")} />
-          <Input label="Institution" placeholder="MIT" {...completeForm.register("institution")} />
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="new-password"
-            {...completeForm.register("password")}
-            error={completeForm.formState.errors.password?.message}
-          />
-          <Button type="submit" loading={completeForm.formState.isSubmitting}>
-            Finish
-          </Button>
-        </form>
+      <AppShell title="Your Particulars" eyebrow="Enrolment" showBack hideTabs>
+        <div className="flex-1 px-5 pt-6 pb-8">
+          <header className="mb-6 hairline-b pb-5">
+            <p className="eyebrow text-brass-500">The Registrar</p>
+            <h2 className="mt-2 font-serif text-2xl leading-tight text-foreground">
+              A few <span className="italic">particulars</span>.
+            </h2>
+            <p className="mt-2 font-serif text-sm italic text-muted-foreground">
+              Others will recognise you by these.
+            </p>
+          </header>
+
+          <form className="flex flex-col gap-4" onSubmit={completeForm.handleSubmit(onComplete)}>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="First name"
+                {...completeForm.register("firstName")}
+                error={completeForm.formState.errors.firstName?.message}
+              />
+              <Input
+                label="Last name"
+                {...completeForm.register("lastName")}
+                error={completeForm.formState.errors.lastName?.message}
+              />
+            </div>
+            <Input
+              label="Academic title"
+              placeholder="Prof. / Dr. / PhD candidate"
+              {...completeForm.register("academicTitle")}
+            />
+            <Input label="Institution" placeholder="MIT" {...completeForm.register("institution")} />
+            <Input
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              {...completeForm.register("password")}
+              error={completeForm.formState.errors.password?.message}
+            />
+            <Button type="submit" loading={completeForm.formState.isSubmitting} size="lg" fullWidth>
+              Confirm Enrolment
+            </Button>
+          </form>
+        </div>
       </AppShell>
     );
   }
 
   return (
-    <AppShell title="Log in" showBack hideTabs>
-      <form className="flex flex-col gap-4" onSubmit={loginForm.handleSubmit(onLogin)}>
-        <Input label="Email" type="email" autoComplete="email" {...loginForm.register("email")} error={loginForm.formState.errors.email?.message} />
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          {...loginForm.register("password")}
-          error={loginForm.formState.errors.password?.message}
-        />
-        <Button type="submit" loading={loginForm.formState.isSubmitting}>
-          Log in
-        </Button>
-        <div className="flex justify-center gap-1 text-sm">
-          <span className="text-gray-500">New here?</span>
-          <Link href="/register" className="font-medium text-brand-600 hover:underline">
-            Create an account
-          </Link>
-        </div>
-      </form>
+    <AppShell title="A Returning Fellow" eyebrow="Admission" showBack hideTabs>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <header className="mb-6 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">Welcome</p>
+          <h2 className="mt-2 font-serif text-2xl leading-tight text-foreground">
+            Good to see you <span className="italic">again</span>.
+          </h2>
+        </header>
+
+        <form className="flex flex-col gap-4" onSubmit={loginForm.handleSubmit(onLogin)}>
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            {...loginForm.register("email")}
+            error={loginForm.formState.errors.email?.message}
+          />
+          <Input
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            {...loginForm.register("password")}
+            error={loginForm.formState.errors.password?.message}
+          />
+          <Button type="submit" loading={loginForm.formState.isSubmitting} size="lg" fullWidth>
+            Grant Admission
+          </Button>
+          <div className="flex justify-center gap-1 text-sm">
+            <span className="font-serif italic text-muted-foreground">New here?</span>
+            <Link href="/register" className="font-serif italic text-brass-600 hover:text-brass-700">
+              Request admission
+            </Link>
+          </div>
+        </form>
+      </div>
     </AppShell>
   );
 }

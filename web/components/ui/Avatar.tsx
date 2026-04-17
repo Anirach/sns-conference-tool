@@ -1,6 +1,54 @@
 "use client";
 
 import { cn } from "@/lib/utils/cn";
+import { colorFromName, initials } from "@/lib/utils/avatar";
+
+interface UserAvatarProps {
+  firstName: string;
+  lastName: string;
+  src?: string | null;
+  size?: number;
+  className?: string;
+  shape?: "square" | "circle";
+}
+
+export function UserAvatar({
+  firstName,
+  lastName,
+  src,
+  size = 48,
+  className,
+  shape = "square"
+}: UserAvatarProps) {
+  const bg = colorFromName(firstName + lastName);
+  return (
+    <div
+      className={cn(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden text-background font-serif",
+        shape === "square" ? "rounded-sm" : "rounded-full",
+        className
+      )}
+      style={{
+        width: size,
+        height: size,
+        background: src ? undefined : bg,
+        fontSize: size * 0.36
+      }}
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={`${firstName} ${lastName}`}
+          className="h-full w-full object-cover grayscale contrast-110"
+        />
+      ) : (
+        <span className="italic">{initials(firstName, lastName)}</span>
+      )}
+      <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-foreground/10" />
+    </div>
+  );
+}
 
 interface AvatarProps {
   name: string;
@@ -9,44 +57,23 @@ interface AvatarProps {
   className?: string;
 }
 
-const sizeClass: Record<NonNullable<AvatarProps["size"]>, string> = {
-  sm: "h-8 w-8 text-xs",
-  md: "h-10 w-10 text-sm",
-  lg: "h-14 w-14 text-base"
+const sizeMap: Record<NonNullable<AvatarProps["size"]>, number> = {
+  sm: 32,
+  md: 40,
+  lg: 56
 };
 
 export function Avatar({ name, src, size = "md", className }: AvatarProps) {
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-
-  const hue = Math.abs(hash(name)) % 360;
-
+  const parts = name.split(" ").filter(Boolean);
+  const first = parts[0] ?? "?";
+  const last = parts[parts.length - 1] ?? "";
   return (
-    <div
-      className={cn(
-        "flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full font-semibold text-white",
-        sizeClass[size],
-        className
-      )}
-      style={{ backgroundColor: src ? undefined : `hsl(${hue} 55% 45%)` }}
-    >
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        initials
-      )}
-    </div>
+    <UserAvatar
+      firstName={first}
+      lastName={last}
+      src={src}
+      size={sizeMap[size]}
+      className={className}
+    />
   );
-}
-
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i);
-  return h;
 }

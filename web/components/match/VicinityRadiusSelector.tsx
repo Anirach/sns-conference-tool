@@ -2,43 +2,43 @@
 
 import { cn } from "@/lib/utils/cn";
 
+type Radius = 20 | 50 | 100;
+
 interface VicinityRadiusSelectorProps {
-  value: 20 | 50 | 100;
-  onChange: (value: 20 | 50 | 100) => void;
+  value: Radius;
+  onChange: (value: Radius) => void;
+  className?: string;
 }
 
-const OPTIONS: Array<{ value: 20 | 50 | 100; label: string; description: string }> = [
-  { value: 20, label: "20 m", description: "Same room" },
-  { value: 50, label: "50 m", description: "Same floor" },
-  { value: 100, label: "100 m", description: "Same building" }
-];
+const OPTIONS: Radius[] = [20, 50, 100];
 
-export function VicinityRadiusSelector({ value, onChange }: VicinityRadiusSelectorProps) {
+export function VicinityRadiusSelector({ value, onChange, className }: VicinityRadiusSelectorProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-sm font-medium text-gray-700">Vicinity radius</div>
-      <div className="grid grid-cols-3 gap-2">
-        {OPTIONS.map((o) => {
-          const active = o.value === value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => onChange(o.value)}
-              className={cn(
-                "flex flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-sm transition-colors",
-                active
-                  ? "border-brand-500 bg-brand-50 text-brand-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-              )}
-              aria-pressed={active}
-            >
-              <span className="text-base font-semibold">{o.label}</span>
-              <span className="text-[11px] uppercase tracking-wide">{o.description}</span>
-            </button>
-          );
-        })}
-      </div>
+    <div
+      role="radiogroup"
+      aria-label="Search radius"
+      className={cn("inline-flex rounded-full bg-surface-sunken p-1", className)}
+    >
+      {OPTIONS.map((r) => {
+        const active = r === value;
+        return (
+          <button
+            key={r}
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(r)}
+            type="button"
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm font-semibold tabular-nums transition-all",
+              active ? "bg-background text-brand-700 shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {r} m
+          </button>
+        );
+      })}
     </div>
   );
 }
+
+export const RadiusSelector = VicinityRadiusSelector;

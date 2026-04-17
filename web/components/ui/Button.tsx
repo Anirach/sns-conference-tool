@@ -3,8 +3,8 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
 import { cn } from "@/lib/utils/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md" | "lg";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "brass";
+type Size = "sm" | "md" | "lg" | "icon";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -14,16 +14,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<Variant, string> = {
-  primary: "bg-brand-600 hover:bg-brand-700 text-white disabled:bg-brand-300",
-  secondary: "bg-gray-100 hover:bg-gray-200 text-gray-900 disabled:text-gray-400",
-  ghost: "bg-transparent hover:bg-gray-100 text-gray-900",
-  danger: "bg-red-600 hover:bg-red-700 text-white"
+  primary: "bg-brand-500 text-background hover:bg-brand-700 disabled:bg-brand-200",
+  secondary: "bg-surface-sunken text-foreground hover:bg-muted disabled:text-muted-foreground",
+  outline: "bg-transparent text-foreground hairline hover:border-brass-500 hover:text-brass-500",
+  ghost: "bg-transparent text-foreground hover:text-brass-500",
+  danger: "bg-danger text-background hover:bg-danger/90",
+  brass: "bg-brass-500 text-background hover:bg-brass-600"
 };
 
 const sizeStyles: Record<Size, string> = {
-  sm: "h-9 px-3 text-sm rounded-lg",
-  md: "h-11 px-4 text-base rounded-xl",
-  lg: "h-12 px-5 text-base rounded-xl"
+  sm: "h-9 px-3 text-xs uppercase tracking-[0.14em] font-semibold rounded-sm",
+  md: "h-11 px-5 text-sm uppercase tracking-[0.14em] font-semibold rounded-sm",
+  lg: "h-12 px-6 text-sm uppercase tracking-[0.18em] font-semibold rounded-sm",
+  icon: "h-11 w-11 rounded-sm"
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -35,8 +38,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2",
+        "inline-flex items-center justify-center gap-2 transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed",
         variantStyles[variant],
         sizeStyles[size],

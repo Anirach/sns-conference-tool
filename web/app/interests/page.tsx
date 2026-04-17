@@ -1,15 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Link as LinkIcon, FileText, Type, Trash2, Sparkles } from "lucide-react";
+import { BookOpen, FileText, Link as LinkIcon, Plus, Trash2, Type, Upload } from "lucide-react";
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Dialog } from "@/components/ui/Dialog";
 import { Input, Textarea } from "@/components/ui/Input";
+import { KeywordChip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Dialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/ui/Toast";
 import { interestsApi } from "@/lib/api/interests";
 import { bridge } from "@/lib/bridge/client";
@@ -25,211 +24,228 @@ export default function InterestsPage() {
   });
 
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<InterestType>("TEXT");
-  const [textValue, setTextValue] = useState("");
-  const [linkValue, setLinkValue] = useState("");
-  const [pickedFile, setPickedFile] = useState<FilePickResult | null>(null);
+  const [tab, setTab] = useState<InterestType>("TEXT");
+  const [text, setText] = useState("");
+  const [link, setLink] = useState("");
+  const [picked, setPicked] = useState<FilePickResult | null>(null);
 
   const createMut = useMutation({
     mutationFn: (body: { type: InterestType; content: string }) =>
       interestsApi.create(body).then((r) => r.data),
     onSuccess: (created) => {
       qc.setQueryData<Interest[]>(["interests"], (prev = []) => [created, ...prev]);
-      toast({ title: "Interest added", description: `Extracted ${created.extractedKeywords.length} keywords.`, variant: "success" });
+      toast({
+        title: "Inquiry entered",
+        description: `Extracted ${created.extractedKeywords.length} key terms.`,
+        variant: "success"
+      });
       reset();
     },
-    onError: () => toast({ title: "Could not add interest", variant: "error" })
+    onError: () => toast({ title: "Could not enter inquiry", variant: "error" })
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => interestsApi.delete(id),
-    onSuccess: (_res, id) => {
+    onSuccess: (_r, id) => {
       qc.setQueryData<Interest[]>(["interests"], (prev = []) => prev.filter((i) => i.interestId !== id));
     }
   });
 
   function reset() {
     setOpen(false);
-    setTextValue("");
-    setLinkValue("");
-    setPickedFile(null);
-    setActiveTab("TEXT");
+    setText("");
+    setLink("");
+    setPicked(null);
+    setTab("TEXT");
   }
 
-  async function onPickFile() {
+  async function onPick() {
     try {
       const res = await bridge.call<FilePickResult>("file.pickArticle", { allowedExt: ["pdf", "txt"] });
-      setPickedFile(res);
+      setPicked(res);
     } catch {
-      toast({ title: "Could not open file picker", variant: "error" });
+      toast({ title: "File picker unavailable", variant: "error" });
     }
   }
 
   function submit() {
-    if (activeTab === "TEXT") {
-      if (!textValue.trim()) return;
-      createMut.mutate({ type: "TEXT", content: textValue });
-    } else if (activeTab === "ARTICLE_LINK") {
-      if (!linkValue.trim()) return;
-      createMut.mutate({ type: "ARTICLE_LINK", content: linkValue });
-    } else {
-      if (!pickedFile) return;
-      createMut.mutate({ type: "ARTICLE_LOCAL", content: pickedFile.path });
+    if (tab === "TEXT" && text.trim()) {
+      createMut.mutate({ type: "TEXT", content: text });
+    } else if (tab === "ARTICLE_LINK" && link.trim()) {
+      createMut.mutate({ type: "ARTICLE_LINK", content: link });
+    } else if (tab === "ARTICLE_LOCAL" && picked) {
+      createMut.mutate({ type: "ARTICLE_LOCAL", content: picked.path });
     }
   }
 
   return (
-    <AppShell title="Interests" right={<AddButton onClick={() => setOpen(true)} />}>
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-gray-500">Loading…</div>
-      ) : interests.length === 0 ? (
-        <EmptyState
-          icon={Sparkles}
-          title="Add your first interest"
-          description="Paste a paragraph, drop a PDF, or share a link. We'll extract keywords to match you with others."
-          action={<Button onClick={() => setOpen(true)}>Add interest</Button>}
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {interests.map((i) => (
-            <Card key={i.interestId}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <TypeBadge type={i.type} />
-                  </CardTitle>
+    <AppShell
+      title="Inquiries"
+      eyebrow="The Register"
+      right={
+        <Button size="sm" onClick={() => setOpen(true)} className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Add
+        </Button>
+      }
+    >
+      <div className="flex-1 px-5 pt-5 pb-8">
+        <header className="mb-5 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">Curated</p>
+          <h2 className="mt-2 font-serif text-2xl leading-tight text-foreground">
+            Topics of <span className="italic">Inquiry</span>
+          </h2>
+          <p className="mt-1 font-serif text-xs italic text-muted-foreground">
+            These shape the affinities we surface.
+          </p>
+        </header>
+
+        {isLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : interests.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title="No inquiries yet"
+            description="Paste a paragraph, deposit a PDF, or link to an arXiv abstract."
+            ctaLabel="Add inquiry"
+            onCta={() => setOpen(true)}
+          />
+        ) : (
+          <div>
+            {interests.map((i) => (
+              <article key={i.interestId} className="py-4 hairline-b">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <TypeBadge type={i.type} />
                   <button
                     type="button"
-                    aria-label="Delete"
                     onClick={() => deleteMut.mutate(i.interestId)}
-                    className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                    aria-label="Remove inquiry"
+                    className="p-1 text-foreground/40 hover:text-danger"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
                   </button>
                 </div>
-                <CardDescription className="break-words">{contentPreview(i)}</CardDescription>
-              </CardHeader>
-              <CardFooter className="flex-wrap gap-1.5">
-                {i.extractedKeywords.map((k) => (
-                  <Chip key={k} variant="brand">
-                    {k}
-                  </Chip>
-                ))}
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      )}
+                <p className="font-serif text-sm leading-relaxed text-foreground/80 break-words">
+                  {preview(i)}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1">
+                  {i.extractedKeywords.map((k, idx) => (
+                    <span key={k} className="inline-flex items-center gap-2">
+                      {idx > 0 ? <span className="text-foreground/20">/</span> : null}
+                      <KeywordChip label={k} />
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Dialog
         open={open}
         onOpenChange={(o) => (o ? setOpen(true) : reset())}
-        title="Add interest"
-        description="Choose how you want to describe a research topic."
+        eyebrow="New Inquiry"
+        title="Enter a topic"
+        description="Choose how to describe it. We'll extract the key terms."
         footer={
           <>
-            <Button variant="secondary" onClick={reset}>
+            <Button variant="outline" onClick={reset}>
               Cancel
             </Button>
             <Button onClick={submit} loading={createMut.isPending}>
-              Extract &amp; save
+              Enter
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-2">
-            <TabButton active={activeTab === "TEXT"} onClick={() => setActiveTab("TEXT")} icon={<Type className="h-4 w-4" />} label="Text" />
-            <TabButton active={activeTab === "ARTICLE_LINK"} onClick={() => setActiveTab("ARTICLE_LINK")} icon={<LinkIcon className="h-4 w-4" />} label="Link" />
-            <TabButton active={activeTab === "ARTICLE_LOCAL"} onClick={() => setActiveTab("ARTICLE_LOCAL")} icon={<FileText className="h-4 w-4" />} label="File" />
+          <div className="flex gap-2 hairline-b pb-2">
+            {(
+              [
+                ["TEXT", "Text", Type],
+                ["ARTICLE_LINK", "Link", LinkIcon],
+                ["ARTICLE_LOCAL", "File", Upload]
+              ] as const
+            ).map(([key, label, Icon]) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`eyebrow inline-flex items-center gap-1.5 border-b pb-1.5 transition-colors ${
+                    active
+                      ? "border-brass-500 text-brass-500"
+                      : "border-transparent text-foreground/40 hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-3 w-3" strokeWidth={1.5} />
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          {activeTab === "TEXT" && (
+          {tab === "TEXT" ? (
             <Textarea
-              label="Describe your research interest"
+              label="Describe your research"
               placeholder="e.g. I work on graph neural networks for drug–target interaction prediction…"
-              value={textValue}
-              onChange={(e) => setTextValue(e.target.value)}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              hint={`${text.length}/500`}
             />
-          )}
+          ) : null}
 
-          {activeTab === "ARTICLE_LINK" && (
+          {tab === "ARTICLE_LINK" ? (
             <Input
-              label="Link (arXiv, DOI, or any URL)"
+              label="arXiv or Google Scholar URL"
               type="url"
               placeholder="https://arxiv.org/abs/2305.12345"
-              value={linkValue}
-              onChange={(e) => setLinkValue(e.target.value)}
-              hint="We'll fetch the abstract to extract keywords."
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              hint="We&apos;ll fetch the abstract to extract keywords."
             />
-          )}
+          ) : null}
 
-          {activeTab === "ARTICLE_LOCAL" && (
+          {tab === "ARTICLE_LOCAL" ? (
             <div className="flex flex-col gap-3">
-              <Button variant="secondary" onClick={onPickFile}>
-                {pickedFile ? "Choose a different file" : "Choose PDF or TXT"}
-              </Button>
-              {pickedFile ? (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                  <div className="font-medium text-gray-800">{pickedFile.name}</div>
-                  <div>{(pickedFile.sizeBytes / 1024).toFixed(1)} KB</div>
-                </div>
+              <button
+                type="button"
+                onClick={onPick}
+                className="flex cursor-pointer flex-col items-center gap-2 bg-card p-8 text-center hairline hover:bg-surface-muted"
+              >
+                <BookOpen className="h-8 w-8 text-brand-500" strokeWidth={1.4} />
+                <p className="font-serif text-sm text-foreground">
+                  {picked ? picked.name : "Deposit a PDF / TXT"}
+                </p>
+                <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Max 10 MB</p>
+              </button>
+              {picked ? (
+                <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  {(picked.sizeBytes / 1024).toFixed(1)} KB
+                </p>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </Dialog>
     </AppShell>
   );
 }
 
-function AddButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Button size="sm" onClick={onClick} className="gap-1.5">
-      <Plus className="h-4 w-4" />
-      Add
-    </Button>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        "flex flex-col items-center gap-1 rounded-xl border px-3 py-2 text-xs transition-colors " +
-        (active ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")
-      }
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 function TypeBadge({ type }: { type: InterestType }) {
   const label = type === "TEXT" ? "Text" : type === "ARTICLE_LINK" ? "Link" : "File";
-  const icon = type === "TEXT" ? <Type className="h-3.5 w-3.5" /> : type === "ARTICLE_LINK" ? <LinkIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />;
+  const Icon = type === "TEXT" ? Type : type === "ARTICLE_LINK" ? LinkIcon : FileText;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-      {icon}
+    <span className="eyebrow inline-flex items-center gap-1 text-brass-500">
+      <Icon className="h-3 w-3" strokeWidth={1.5} />
       {label}
     </span>
   );
 }
 
-function contentPreview(i: Interest): string {
+function preview(i: Interest): string {
   if (i.type === "TEXT") return i.content;
   if (i.type === "ARTICLE_LINK") return i.content;
   return i.content.split("/").pop() || i.content;

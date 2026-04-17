@@ -45,25 +45,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             duration={4000}
             onOpenChange={(open) => !open && remove(item.id)}
             className={cn(
-              "flex items-start gap-3 rounded-xl border bg-white p-4 shadow-lg",
-              item.variant === "success" && "border-green-200",
-              item.variant === "error" && "border-red-200",
-              (!item.variant || item.variant === "default") && "border-gray-200"
+              "flex items-start gap-3 bg-background p-4 shadow-lg hairline",
+              item.variant === "success" && "border-brass-500",
+              item.variant === "error" && "border-danger"
             )}
           >
             <div className="flex-1">
               {item.title ? (
-                <ToastPrimitive.Title className="text-sm font-semibold text-gray-900">
+                <ToastPrimitive.Title className="font-serif text-sm text-foreground">
                   {item.title}
                 </ToastPrimitive.Title>
               ) : null}
               {item.description ? (
-                <ToastPrimitive.Description className="mt-0.5 text-sm text-gray-600">
+                <ToastPrimitive.Description className="mt-0.5 font-serif italic text-xs text-muted-foreground">
                   {item.description}
                 </ToastPrimitive.Description>
               ) : null}
             </div>
-            <ToastPrimitive.Close className="text-gray-400 hover:text-gray-600">
+            <ToastPrimitive.Close className="text-foreground/50 hover:text-foreground">
               <X className="h-4 w-4" />
             </ToastPrimitive.Close>
           </ToastPrimitive.Root>

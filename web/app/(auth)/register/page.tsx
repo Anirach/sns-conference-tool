@@ -29,32 +29,41 @@ export default function RegisterPage() {
   async function onSubmit(values: FormValues) {
     try {
       await authApi.register({ email: values.email });
-      toast({ title: "Check your inbox", description: "We sent you a verification code.", variant: "success" });
+      toast({ title: "A cipher is in transit", description: "Check your inbox for the six-digit code.", variant: "success" });
       router.push(`/verify?email=${encodeURIComponent(values.email)}`);
     } catch {
-      toast({ title: "Could not register", description: "Please try again shortly.", variant: "error" });
+      toast({ title: "Request refused", description: "Please try again shortly.", variant: "error" });
     }
   }
 
   return (
-    <AppShell title="Create account" showBack hideTabs>
-      <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)}>
-        <p className="text-sm text-gray-600">
-          Enter your academic or work email. We&apos;ll send you a 6-digit code to verify it.
-        </p>
-        <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          inputMode="email"
-          placeholder="you@university.edu"
-          error={errors.email?.message}
-          {...register("email")}
-        />
-        <Button type="submit" loading={isSubmitting}>
-          Send verification code
-        </Button>
-      </form>
+    <AppShell title="Request Admission" eyebrow="Enrolment" showBack hideTabs>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <header className="mb-6 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">The Registrar</p>
+          <h2 className="mt-2 font-serif text-2xl leading-tight text-foreground">
+            Let us begin your <span className="italic">enrolment</span>.
+          </h2>
+          <p className="mt-2 font-serif text-sm italic text-muted-foreground">
+            We shall dispatch a cipher to verify your address.
+          </p>
+        </header>
+
+        <form className="flex flex-col gap-5" onSubmit={handleSubmit(onSubmit)}>
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            placeholder="you@university.edu"
+            error={errors.email?.message}
+            {...register("email")}
+          />
+          <Button type="submit" loading={isSubmitting} size="lg" fullWidth>
+            Dispatch Cipher
+          </Button>
+        </form>
+      </div>
     </AppShell>
   );
 }

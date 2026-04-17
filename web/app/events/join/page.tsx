@@ -3,15 +3,15 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Calendar, QrCode, MapPin } from "lucide-react";
+import { MapPin, Clock, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { QrScannerMock } from "@/components/onboarding/QrScannerMock";
 import { eventsApi } from "@/lib/api/events";
 import { bridge } from "@/lib/bridge/client";
+import { events as allEvents } from "@/lib/fixtures/events";
 import type { ConferenceEvent } from "@/lib/fixtures/types";
 import type { QrScanResult } from "@/lib/bridge/types";
 
@@ -19,6 +19,7 @@ export default function JoinEventPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [code, setCode] = useState("");
+  const [joining, setJoining] = useState<string | null>(null);
 
   const { data: joined = [] } = useQuery<ConferenceEvent[]>({
     queryKey: ["events", "joined"],
@@ -28,10 +29,10 @@ export default function JoinEventPage() {
   const joinMut = useMutation({
     mutationFn: async (eventCode: string) => (await eventsApi.join({ eventCode })).data,
     onSuccess: (r) => {
-      toast({ title: `Joined ${r.event.eventName}`, variant: "success" });
+      toast({ title: `Joined ${r.event.eventName}`, description: "Let's find your fellows.", variant: "success" });
       router.push(`/events/${r.event.eventId}`);
     },
-    onError: () => toast({ title: "Could not join", description: "Check the code and try again.", variant: "error" })
+    onError: () => toast({ title: "Cannot join", description: "Check the cipher and try again.", variant: "error" })
   });
 
   async function onScanQr() {
@@ -39,74 +40,89 @@ export default function JoinEventPage() {
       const res = await bridge.call<QrScanResult>("qr.scan");
       if (res.eventCode) joinMut.mutate(res.eventCode);
     } catch {
-      toast({ title: "Scanner unavailable", description: "Enter the code manually.", variant: "error" });
+      toast({ title: "Scanner unavailable", description: "Enter the cipher manually.", variant: "error" });
     }
   }
 
   return (
-    <AppShell title="Events">
-      <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Join an event</CardTitle>
-            <CardDescription>Scan the QR shown at the venue entrance — or type the code.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Button onClick={onScanQr} loading={joinMut.isPending} className="gap-2">
-              <QrCode className="h-4 w-4" />
-              Scan QR code
-            </Button>
-            <div className="text-center text-xs text-gray-400">or</div>
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (code.trim()) joinMut.mutate(code.trim().toUpperCase());
-              }}
-            >
-              <Input
-                placeholder="e.g. NEURIPS2026"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="uppercase"
-              />
-              <Button type="submit" disabled={!code.trim()} loading={joinMut.isPending}>
-                Join
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+    <AppShell title="Scan Session" eyebrow="In Residence" showBack>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <QrScannerMock />
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Your events</h2>
-          {joined.length === 0 ? (
-            <EmptyState
-              icon={Calendar}
-              title="No active event"
-              description="Join an event by scanning the QR code at the registration desk."
+        <p className="mt-4 text-center font-serif text-xs italic text-muted-foreground">
+          Present the cipher affixed to your event badge.
+        </p>
+
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <Button onClick={onScanQr} loading={joinMut.isPending} size="lg" fullWidth>
+            Scan Cipher
+          </Button>
+          <div className="eyebrow text-foreground/30">or transcribe</div>
+          <form
+            className="flex w-full gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (code.trim()) joinMut.mutate(code.trim().toUpperCase());
+            }}
+          >
+            <Input
+              placeholder="NEURIPS2026"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="uppercase tracking-[0.2em]"
             />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {joined.map((e) => (
+            <Button type="submit" disabled={!code.trim()} loading={joinMut.isPending}>
+              Enter
+            </Button>
+          </form>
+        </div>
+
+        <section className="mt-10">
+          <p className="eyebrow mb-3 text-brass-500 hairline-b pb-2">Demo Sessions</p>
+          <div>
+            {allEvents.map((e) => {
+              const expired = new Date(e.expirationCode) < new Date();
+              const already = joined.some((j) => j.eventId === e.eventId);
+              return (
                 <button
                   key={e.eventId}
-                  onClick={() => router.push(`/events/${e.eventId}`)}
-                  className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left hover:bg-gray-50"
+                  disabled={expired || joining !== null}
+                  onClick={async () => {
+                    if (already) {
+                      router.push(`/events/${e.eventId}`);
+                      return;
+                    }
+                    setJoining(e.eventId);
+                    try {
+                      await joinMut.mutateAsync(e.qrCode);
+                    } finally {
+                      setJoining(null);
+                    }
+                  }}
+                  className="flex w-full items-center justify-between gap-3 py-4 text-left hairline-b transition-colors hover:bg-surface-muted disabled:opacity-50"
                 >
-                  <div className="rounded-lg bg-brand-50 p-2 text-brand-600">
-                    <Calendar className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-gray-900">{e.eventName}</div>
-                    <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-gray-500">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {e.venue}
+                  <div className="min-w-0">
+                    <p className="truncate font-serif text-base text-foreground">{e.eventName}</p>
+                    <div className="mt-1 flex items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3 w-3" strokeWidth={1.5} />
+                        {e.venue.split(",")[0]}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" strokeWidth={1.5} />
+                        {expired ? "Adjourned" : "In Session"}
+                      </span>
                     </div>
                   </div>
+                  {joining === e.eventId ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-brass-500" />
+                  ) : (
+                    <span className="eyebrow text-foreground/40">{already ? "Open" : expired ? "Ended" : "Join"}</span>
+                  )}
                 </button>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
         </section>
       </div>
     </AppShell>

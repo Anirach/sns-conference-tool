@@ -3,6 +3,7 @@
 import { Send } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/utils/cn";
 
 interface MessageInputProps {
   onSend: (content: string) => void;
@@ -23,24 +24,28 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
   return (
     <form
       onSubmit={submit}
-      className="flex items-center gap-2 border-t border-gray-200 bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      className="flex items-center gap-2 bg-background p-3 hairline-t"
+      style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Type a message"
+        placeholder="Message…"
         aria-label="Message"
         disabled={disabled}
-        className="h-11 flex-1 rounded-full border border-gray-300 bg-gray-50 px-4 text-sm focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+        className={cn(
+          "h-11 flex-1 rounded-2xl bg-surface-sunken px-4 font-serif text-sm text-foreground placeholder:text-foreground/30",
+          "focus:outline-none focus:ring-1 focus:ring-brass-500/40"
+        )}
       />
       <Button
         type="submit"
-        size="md"
+        size="icon"
         className="h-11 w-11 rounded-full p-0"
         disabled={disabled || !value.trim()}
         aria-label="Send"
       >
-        <Send className="h-4 w-4" />
+        <Send className="h-4 w-4" strokeWidth={1.5} />
       </Button>
     </form>
   );

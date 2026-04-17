@@ -7,22 +7,27 @@ import type { ChatMessage } from "@/lib/fixtures/types";
 interface MessageBubbleProps {
   message: ChatMessage;
   isMine: boolean;
+  showTime?: boolean;
 }
 
-export function MessageBubble({ message, isMine }: MessageBubbleProps) {
+export function MessageBubble({ message, isMine, showTime }: MessageBubbleProps) {
   return (
-    <div className={cn("flex w-full", isMine ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm",
-          isMine
-            ? "rounded-br-md bg-brand-600 text-white"
-            : "rounded-bl-md bg-white text-gray-900 ring-1 ring-gray-200"
-        )}
-      >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
-        <div className={cn("mt-1 text-right text-[10px]", isMine ? "text-brand-100" : "text-gray-400")}>
+    <div className="flex flex-col">
+      {showTime ? (
+        <p className="my-2 text-center text-[10px] tabular-nums text-muted-foreground">
           {format(new Date(message.createdAt), "HH:mm")}
+        </p>
+      ) : null}
+      <div className={cn("flex w-full", isMine ? "justify-end" : "justify-start")}>
+        <div
+          className={cn(
+            "max-w-[78%] break-words px-4 py-2.5 font-serif text-sm leading-relaxed animate-fade-in-up",
+            isMine
+              ? "rounded-bl-2xl rounded-br-sm rounded-tl-2xl rounded-tr-2xl bg-brand-500 text-background"
+              : "rounded-bl-sm rounded-br-2xl rounded-tl-2xl rounded-tr-2xl bg-surface-sunken text-foreground"
+          )}
+        >
+          {message.content}
         </div>
       </div>
     </div>

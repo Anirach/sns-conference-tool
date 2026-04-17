@@ -7,9 +7,9 @@ export function OfflineBanner() {
   const online = useEventStore((s) => s.online);
   if (online) return null;
   return (
-    <div className="sticky top-0 z-40 flex items-center justify-center gap-2 bg-amber-500 px-3 py-1.5 text-xs font-medium text-white">
-      <WifiOff className="h-3.5 w-3.5" />
-      You are offline — showing cached data
+    <div className="sticky top-0 z-40 flex items-center justify-center gap-2 bg-brass-500 px-3 py-1.5 eyebrow text-background">
+      <WifiOff className="h-3 w-3" strokeWidth={1.5} />
+      Offline — showing cached data
     </div>
   );
 }
