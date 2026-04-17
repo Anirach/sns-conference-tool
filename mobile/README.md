@@ -39,8 +39,9 @@ Override at build time with: `flutter run --dart-define=FRONTEND_ORIGIN=https://
 | `qr.scan` | Phase 2 — real | `mobile_scanner` — full-screen modal scanner |
 | `file.pickArticle` | Phase 2 — real | `file_picker` — PDF/TXT/MD |
 | `storage.get/set/delete` | Phase 1 — real | `flutter_secure_storage` |
-| `sns.login` | Phase 4 — stub | Will wire `flutter_facebook_auth` + LinkedIn custom tab |
-| `push.*` | Phase 3 — stub | Will wire `firebase_messaging` |
+| `sns.login` | Phase 4 — real (needs app IDs) | `flutter_facebook_auth`; LinkedIn via `url_launcher` custom-tab |
+| `push.*` | Phase 3 — real (needs Firebase config) | `firebase_messaging` — `Firebase.initializeApp` returns `configured: false` until `google-services.json` / `GoogleService-Info.plist` is provisioned |
+| `localdb.matches.*` | Phase 4 — real (needs codegen) | `isar` — run `dart run build_runner build` once to generate `isar_db.g.dart` |
 
 Location fixes arrive on the web side as `window.addEventListener("flutter-bridge-event", ...)` with `detail.type === "gps.fix"`.
 

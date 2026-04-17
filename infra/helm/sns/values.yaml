@@ -1,0 +1,47 @@
+image:
+  repository: ghcr.io/anirach/sns-backend
+  tag: ""          # defaults to chart appVersion
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 768Mi
+  limits:
+    cpu: 2
+    memory: 1536Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 60
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.sns.example.com
+  tlsSecret: sns-tls
+
+env:
+  SPRING_PROFILES_ACTIVE: prod
+  SERVER_PORT: "8080"
+  # Actual secrets come from external-secrets / kustomize overlays; never committed.
+  DATABASE_URL: ""
+  REDIS_URL: ""
+
+podDisruptionBudget:
+  minAvailable: 2
+
+hardDelete:
+  schedule: "0 3 * * *"    # nightly 03:00
+
+observability:
+  prometheusScrape: true
+  otelCollectorEndpoint: http://otel-collector.observability:4317

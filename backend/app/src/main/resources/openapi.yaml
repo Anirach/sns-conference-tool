@@ -357,10 +357,181 @@ paths:
       summary: GDPR data export (ZIP of all user-owned data)
       responses:
         "200":
-          description: ZIP archive
+          description: ZIP archive containing profile, interests, matches, chat history, SNS links
           content:
             application/zip:
               schema: { type: string, format: binary }
+
+  /users/me:
+    delete:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      summary: Soft-delete the current user (hard-deleted after 30 days)
+      responses:
+        "200":
+          description: Soft-delete accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  status: { type: string }
+
+  /chats:
+    get:
+      tags: [Chat]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Thread heads for the current user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChatMessage" }
+
+  /chat/{eventId}/{otherUserId}:
+    get:
+      tags: [Chat]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: otherUserId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: since, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Ordered message history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/ChatMessage" }
+
+  /chat/send:
+    post:
+      tags: [Chat]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, toUserId, content]
+              properties:
+                eventId: { type: string, format: uuid }
+                toUserId: { type: string, format: uuid }
+                content: { type: string, maxLength: 4000 }
+                clientMessageId: { type: string }
+      responses:
+        "200":
+          description: Message persisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMessage" }
+
+  /chat/read:
+    post:
+      tags: [Chat]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, messageId]
+              properties:
+                eventId: { type: string, format: uuid }
+                messageId: { type: string, format: uuid }
+      responses:
+        "200": { description: Marked read }
+
+  /devices/register:
+    post:
+      tags: [Devices]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform: { type: string, enum: [ANDROID, IOS, WEB] }
+                token: { type: string }
+                appVersion: { type: string }
+      responses:
+        "200": { description: Device token registered }
+
+  /sns:
+    get:
+      tags: [SNS]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Linked providers for the current user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SnsLink" }
+
+  /sns/link:
+    post:
+      tags: [SNS]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider: { type: string, enum: [FACEBOOK, LINKEDIN] }
+      responses:
+        "200":
+          description: Authorize URL + state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authUrl: { type: string, format: uri }
+                  state: { type: string }
+
+  /sns/callback:
+    post:
+      tags: [SNS]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, code, state]
+              properties:
+                provider: { type: string, enum: [FACEBOOK, LINKEDIN] }
+                code: { type: string }
+                state: { type: string }
+      responses:
+        "200": { description: Link established }
+
+  /sns/{provider}:
+    delete:
+      tags: [SNS]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: provider, required: true, schema: { type: string, enum: [FACEBOOK, LINKEDIN] } }
+      responses:
+        "200": { description: Unlinked }
 
 components:
   securitySchemes:
@@ -437,6 +608,25 @@ components:
         matches:
           type: array
           items: { $ref: "#/components/schemas/Match" }
+    ChatMessage:
+      type: object
+      required: [messageId, eventId, fromUserId, toUserId, content, readFlag, createdAt]
+      properties:
+        messageId: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        fromUserId: { type: string, format: uuid }
+        toUserId: { type: string, format: uuid }
+        content: { type: string, maxLength: 4000 }
+        readFlag: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    SnsLink:
+      type: object
+      required: [snsId, provider, providerUserId, linkedAt]
+      properties:
+        snsId: { type: string, format: uuid }
+        provider: { type: string, enum: [FACEBOOK, LINKEDIN] }
+        providerUserId: { type: string }
+        linkedAt: { type: string, format: date-time }
     Problem:
       description: RFC 7807 Problem Details
       type: object

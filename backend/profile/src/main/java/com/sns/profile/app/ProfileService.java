@@ -54,6 +54,16 @@ public class ProfileService {
         return toDto(user, profile);
     }
 
+    @Transactional
+    public void softDelete(UUID userId) {
+        UserEntity user = users.findById(userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (user.getDeletedAt() == null) {
+            user.setDeletedAt(java.time.OffsetDateTime.now());
+            users.save(user);
+        }
+    }
+
     private static UserDto toDto(UserEntity user, ProfileEntity p) {
         return new UserDto(
             user.getUserId(),

@@ -1,0 +1,69 @@
+groups:
+  - name: sns-backend
+    interval: 30s
+    rules:
+
+      - alert: SnsApiHighErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{app="sns-backend",status=~"5.."}[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{app="sns-backend"}[5m])) > 0.02
+        for: 5m
+        labels:
+          severity: page
+          team: sns
+        annotations:
+          summary: SNS backend 5xx rate > 2% for 5m
+          runbook: docs/runbooks/api-error-rate.md
+
+      - alert: SnsWebSocketReconnectStorm
+        expr: rate(sns_ws_connect_total[5m]) > 50
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: WebSocket reconnect storm on sns-backend
+          runbook: docs/runbooks/ws-reconnect-storm.md
+
+      - alert: SnsRedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Redis memory above 85% — eviction risk
+
+      - alert: SnsPgReplicationLag
+        expr: pg_replication_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Postgres replication lag > 30s
+
+      - alert: SnsMatchRecomputeSlow
+        expr: histogram_quantile(0.95, sum(rate(sns_matching_recompute_seconds_bucket[5m])) by (le)) > 5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Matching recompute p95 > 5s
+          runbook: docs/runbooks/matching-slow.md
+
+      - alert: SnsJwtDecodeErrors
+        expr: rate(spring_security_authentications_seconds_count{result="failure"}[5m]) > 10
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: Elevated JWT / authentication failures
+          runbook: docs/runbooks/jwt-failures.md
+
+      - alert: SnsPushDeliveryFailure
+        expr: |
+          sum(rate(sns_push_outbox_status{status="FAILED"}[5m])) > 5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Push outbox FAILED rate > 5/s

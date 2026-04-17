@@ -6,9 +6,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../bridge/js_bridge.dart';
 import '../../native/file_picker_service.dart';
 import '../../native/location_service.dart';
+import '../../native/push_service.dart';
 import '../../native/qr_scanner_service.dart';
 import '../../native/secure_storage_service.dart';
 import '../../native/sns_auth_service.dart';
+import '../../storage/isar_db.dart';
 
 final rootNavigatorKeyProvider =
     Provider<GlobalKey<NavigatorState>>((_) => GlobalKey<NavigatorState>());
@@ -31,6 +33,10 @@ final filePickerServiceProvider =
 final snsAuthServiceProvider =
     Provider<SnsAuthService>((_) => SnsAuthService());
 
+final pushServiceProvider = Provider<PushService>((_) => PushService());
+
+final isarDbProvider = Provider<IsarDb>((_) => IsarDb());
+
 final webviewControllerProvider =
     StateProvider<WebViewController?>((_) => null);
 
@@ -41,5 +47,7 @@ final jsBridgeProvider = Provider<JsBridge>((ref) {
     qr: ref.read(qrScannerServiceProvider),
     files: ref.read(filePickerServiceProvider),
     sns: ref.read(snsAuthServiceProvider),
+    push: ref.read(pushServiceProvider),
+    localDb: ref.read(isarDbProvider),
   );
 });

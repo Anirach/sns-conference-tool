@@ -8,11 +8,16 @@ On-site conference networking app: discover nearby researchers with overlapping 
 
 ## Status
 
-**Pass 1 — UI Mockups (current)**
-Fully navigable Next.js web frontend + Flutter WebView shell, driven by mock data. No backend required.
+All five phases of [the implementation plan](.claude/plans/lively-dreaming-thimble.md) have been implemented:
 
-**Pass 2 — Backend wiring (next)**
-Spring Boot 3.3 / Java 21 implementation per spec §6. Replaces MSW mocks with real REST + WebSocket.
+- **Phase 0**: CI, Playwright smoke test, OpenAPI 3.1 spec derived from the MSW contract.
+- **Phase 1**: Spring Boot backend — Auth (register/verify/complete/login/refresh/logout) + Profile, RS256 JWT with rotating refresh tokens, Flyway V1–V2.
+- **Phase 2**: Events + Interests + Matching — PostGIS `ST_DWithin` vicinity queries, TF-IDF similarity, async match recompute. Real mobile `geolocator` / `mobile_scanner` / `file_picker`.
+- **Phase 3**: Real-time chat (STOMP/WebSocket with JWT CONNECT auth), push-notification outbox with at-least-once delivery, device-token registration, `firebase_messaging` wired on mobile.
+- **Phase 4**: SNS OAuth2 (Facebook + LinkedIn) with AES-256-GCM token encryption, GDPR export aggregator + soft/hard-delete cron, CSP + HSTS security headers, Isar local store on mobile.
+- **Phase 5**: JSON logs with `X-Request-Id` correlation, Micrometer + OpenTelemetry, 7 Prometheus alert rules, Grafana dashboard, Helm chart with HPA + PDB + CronJob, on-call runbooks.
+
+Web-side per-domain MSW toggle enables incremental cutover per phase.
 
 ---
 
@@ -20,11 +25,11 @@ Spring Boot 3.3 / Java 21 implementation per spec §6. Replaces MSW mocks with r
 
 ```
 .
-├── web/          Next.js 14 (App Router). Primary pass-1 deliverable.
-├── mobile/       Flutter 3.22 WebView shell with bridge stubs.
-├── backend/      Reserved for pass 2.
-├── infra/        docker-compose.dev.yml (Postgres+PostGIS, Redis, MinIO, MailHog).
-└── docs/         SNS-system.md — full spec.
+├── web/          Next.js 14 (App Router) — MSW contract + per-domain cutover toggle.
+├── mobile/       Flutter 3.22 WebView shell — geolocator / mobile_scanner / firebase_messaging / Isar.
+├── backend/      Spring Boot 3.3 / Java 21 multi-module (:app :common :identity :profile :event :interest :matching :chat :notification :sns).
+├── infra/        docker-compose.dev.yml + Helm chart + Prometheus alerts + Grafana dashboard.
+└── docs/         SNS-system.md — full spec; runbooks/ — on-call procedures.
 ```
 
 ---

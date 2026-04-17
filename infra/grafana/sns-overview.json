@@ -1,0 +1,63 @@
+{
+  "uid": "sns-overview",
+  "title": "SNS Overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["sns"],
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "env", "label": "env", "type": "query", "query": "label_values(up{app=\"sns-backend\"}, env)", "datasource": { "type": "prometheus" } }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Requests / s",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{app=\"sns-backend\",env=\"$env\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "5xx rate",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{app=\"sns-backend\",env=\"$env\",status=~\"5..\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 (ms)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{app=\"sns-backend\",env=\"$env\"}[5m])) by (le)) * 1000", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{app=\"sns-backend\",env=\"$env\"}[5m])) by (le)) * 1000", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{app=\"sns-backend\",env=\"$env\"}[5m])) by (le)) * 1000", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "JVM heap",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{area=\"heap\",app=\"sns-backend\",env=\"$env\"}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Push outbox by status",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(sns_push_outbox_status[5m])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    }
+  ]
+}

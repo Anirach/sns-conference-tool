@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-hard-delete
+spec:
+  schedule: {{ .Values.hardDelete.schedule | quote }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sns-hard-delete
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              # The job is run in-process by Spring `@Scheduled`. This CronJob acts as a tripwire:
+              # if the in-process scheduler stalls (pod pinned, thread starvation), this external
+              # cron wakes the API endpoint to run the sweep explicitly.
+              command: ["sh", "-c"]
+              args:
+                - |
+                  curl -fsS -X POST -H "Content-Type: application/json" \
+                       "http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/actuator/health" || true

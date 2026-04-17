@@ -4,11 +4,11 @@ Spring Boot 3.3 / Java 21 implementation per [docs/SNS-system.md §6](../docs/SN
 
 ## Status
 
-- **Phase 1 (current)**: Auth + Profile + GDPR export. Flyway V1–V2. Real RS256 JWT + rotating refresh tokens.
-- **Phase 2 (planned)**: Events + Interests + Matching (similarity engine).
-- **Phase 3 (planned)**: Real-time chat (WebSocket + STOMP + Redis Pub/Sub) + push.
-- **Phase 4 (planned)**: SNS OAuth + GDPR hardening + Isar.
-- **Phase 5 (planned)**: Observability, deployment, pilot.
+- **Phase 1**: Auth + Profile + GDPR export (profile only). Flyway V1–V2. Real RS256 JWT + rotating refresh tokens.
+- **Phase 2**: Events + Interests + Matching with PostGIS vicinity queries, TF-IDF similarity, async recompute.
+- **Phase 3**: Real-time chat (WebSocket + STOMP with JWT CONNECT auth), push outbox with at-least-once delivery, device token registration, match-found + chat events driving notifications.
+- **Phase 4**: SNS OAuth2 link/unlink (Facebook, LinkedIn) with AES-256-GCM token encryption, GDPR export aggregator + soft/hard-delete cron, CSP + HSTS security headers.
+- **Phase 5**: Observability (JSON logs, `X-Request-Id` correlation, Micrometer + OTel), Prometheus alert rules, Grafana dashboard, Helm chart with HPA + PDB + CronJob, on-call runbooks.
 
 See [`/Users/anirach/.claude/plans/lively-dreaming-thimble.md`](../../.claude/plans/lively-dreaming-thimble.md) for the full roadmap.
 
@@ -16,11 +16,17 @@ See [`/Users/anirach/.claude/plans/lively-dreaming-thimble.md`](../../.claude/pl
 
 ```
 backend/
-├── app/              Spring Boot bootstrap, Flyway, Docker, global exception handler
-├── common/           Shared DTOs (RFC 7807 Problem, etc.)
-├── identity/         Auth (register, verify, complete, login, refresh, logout), JWT, JWKS
-├── profile/          Profile CRUD + GDPR export
-└── src/main/resources/openapi.yaml   Single source of truth for REST contract
+├── app/            Spring Boot bootstrap, Flyway, Docker, global exception handler, GDPR export
+├── common/         Shared DTOs + cross-module domain events
+├── identity/       Auth (register, verify, complete, login, refresh, logout), JWT, JWKS, Spring Security
+├── profile/        Profile CRUD + soft-delete
+├── event/          Events + participations (PostGIS), vicinity query
+├── interest/       Interests + keyword extractor + article storage (S3/MinIO)
+├── matching/       Similarity engine, per-event recompute, MatchFound publication
+├── chat/           Chat REST + STOMP over WebSocket, JWT CONNECT interceptor
+├── notification/   Device tokens + push outbox with at-least-once drain + FCM/APNs gateway
+├── sns/            OAuth2 link/callback/unlink + AES-256-GCM token crypto
+└── app/src/main/resources/openapi.yaml   Single source of truth for REST contract
 ```
 
 ## First-time setup

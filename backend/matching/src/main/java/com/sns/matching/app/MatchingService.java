@@ -1,5 +1,6 @@
 package com.sns.matching.app;
 
+import com.sns.common.events.MatchFound;
 import com.sns.event.domain.ParticipationEntity;
 import com.sns.event.repo.EventRepository;
 import com.sns.event.repo.ParticipationRepository;
@@ -15,6 +16,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +46,7 @@ public class MatchingService {
     private final InterestRepository interests;
     private final SimilarityMatchRepository matches;
     private final SimilarityEngine engine;
+    private final ApplicationEventPublisher publisher;
     private final long sweepIntervalMs;
 
     public MatchingService(
@@ -52,6 +55,7 @@ public class MatchingService {
         InterestRepository interests,
         SimilarityMatchRepository matches,
         SimilarityEngine engine,
+        ApplicationEventPublisher publisher,
         @Value("${sns.matching.sweep-interval-ms:180000}") long sweepIntervalMs
     ) {
         this.events = events;
@@ -59,6 +63,7 @@ public class MatchingService {
         this.interests = interests;
         this.matches = matches;
         this.engine = engine;
+        this.publisher = publisher;
         this.sweepIntervalMs = sweepIntervalMs;
     }
 
@@ -102,14 +107,19 @@ public class MatchingService {
                 List<String> common = engine.commonKeywords(va, vb, COMMON_KEYWORDS_LIMIT);
                 SimilarityMatchEntity m = matches.findByEventIdAndUserIdAAndUserIdB(eventId, a, b)
                     .orElseGet(SimilarityMatchEntity::new);
+                boolean isNew = (m.getMatchId() == null);
                 m.setEventId(eventId);
                 m.setUserIdA(a);
                 m.setUserIdB(b);
                 m.setSimilarity((float) sim);
                 m.setCommonKeywords(common.toArray(new String[0]));
                 m.setMutual(true); // both users are current participants
-                matches.save(m);
+                var saved = matches.save(m);
                 upserts++;
+                if (isNew) {
+                    publisher.publishEvent(new MatchFound(
+                        saved.getMatchId(), eventId, a, b, (float) sim, common));
+                }
             }
         }
         log.debug("recompute({}) → {} upserts over {} participants", eventId, upserts, userIds.size());
