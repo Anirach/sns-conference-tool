@@ -1,0 +1,448 @@
+openapi: 3.1.0
+info:
+  title: SNS Conference Tool API
+  description: |
+    REST API for the SNS Conference Tool. Pass 1 (current): implemented by MSW
+    handlers in `web/lib/api/mocks/handlers.ts`. Pass 2: implemented by the
+    Spring Boot backend in this module.
+
+    This specification is the single source of truth for request/response
+    shapes. When a real backend endpoint replaces a mock, the MSW handler
+    is deleted and only this schema remains.
+  version: 0.1.0
+servers:
+  - url: /api
+    description: Same-origin (default for the WebView)
+tags:
+  - name: Auth
+  - name: Profile
+  - name: Interests
+  - name: Events
+  - name: Matches
+  - name: Chat
+  - name: Users
+  - name: SNS
+  - name: Devices
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Start registration (email only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202":
+          description: Accepted; verification email dispatched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+
+  /auth/verify:
+    post:
+      tags: [Auth]
+      summary: Verify email with TAN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, tan]
+              properties:
+                email: { type: string, format: email }
+                tan: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        "200":
+          description: TAN accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified: { type: boolean }
+                  verificationToken: { type: string }
+
+  /auth/complete:
+    post:
+      tags: [Auth]
+      summary: Complete registration after verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verificationToken, firstName, lastName, password]
+              properties:
+                verificationToken: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                academicTitle: { type: [string, "null"] }
+                institution: { type: [string, "null"] }
+                password: { type: string, minLength: 8 }
+      responses:
+        "200":
+          description: Registration complete, tokens issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New access+refresh pair (refresh token is rotated)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Logged out; refresh token revoked
+
+  /profile:
+    get:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    put:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                academicTitle: { type: [string, "null"] }
+                institution: { type: [string, "null"] }
+                profilePictureUrl: { type: [string, "null"], format: uri }
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /interests:
+    get:
+      tags: [Interests]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: List interests for the current user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Interest" }
+    post:
+      tags: [Interests]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, content]
+              properties:
+                type: { $ref: "#/components/schemas/InterestType" }
+                content: { type: string }
+                articleUrl: { type: string, format: uri }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Interest created with extracted keywords
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Interest" }
+
+  /interests/{id}:
+    delete:
+      tags: [Interests]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  /events/joined:
+    get:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Events the current user has joined
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+
+  /events/join:
+    post:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventCode]
+              properties:
+                eventCode: { type: string }
+      responses:
+        "200":
+          description: Joined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+                  joinedAt: { type: string, format: date-time }
+        "400": { description: Expired event }
+        "404": { description: Unknown event code }
+
+  /events/{eventId}:
+    get:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: eventId, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404": { description: Not found }
+
+  /events/{eventId}/leave:
+    post:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: eventId, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Left the event }
+
+  /events/{eventId}/vicinity:
+    get:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: eventId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: radius, schema: { type: integer, enum: [20, 50, 100] } }
+      responses:
+        "200":
+          description: Matches inside the selected radius
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VicinityResponse" }
+
+  /events/{eventId}/location:
+    post:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: eventId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lon]
+              properties:
+                lat: { type: number }
+                lon: { type: number }
+                accuracyMeters: { type: number }
+      responses:
+        "204": { description: Location ingested }
+
+  /events/{eventId}/radius:
+    put:
+      tags: [Events]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: eventId, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [radius]
+              properties:
+                radius: { type: integer, enum: [20, 50, 100] }
+      responses:
+        "200": { description: Preference stored }
+
+  /matches/{matchId}:
+    get:
+      tags: [Matches]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ in: path, name: matchId, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: Match detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Match" }
+        "404": { description: Not found }
+
+  /users/me/export:
+    get:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      summary: GDPR data export (ZIP of all user-owned data)
+      responses:
+        "200":
+          description: ZIP archive
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, userId]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        userId: { type: string, format: uuid }
+    User:
+      type: object
+      required: [userId, email, firstName, lastName]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        academicTitle: { type: [string, "null"] }
+        institution: { type: [string, "null"] }
+        profilePictureUrl: { type: [string, "null"], format: uri }
+    InterestType:
+      type: string
+      enum: [TEXT, ARTICLE_LOCAL, ARTICLE_LINK]
+    Interest:
+      type: object
+      required: [interestId, userId, type, content, extractedKeywords, createdAt]
+      properties:
+        interestId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/InterestType" }
+        content: { type: string }
+        extractedKeywords:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+    Event:
+      type: object
+      required: [eventId, eventName, expirationCode, expired]
+      properties:
+        eventId: { type: string, format: uuid }
+        eventName: { type: string }
+        venue: { type: [string, "null"] }
+        expirationCode: { type: string, format: date-time }
+        qrCode: { type: [string, "null"] }
+        expired: { type: boolean }
+    Match:
+      type: object
+      required: [matchId, eventId, otherUserId, name, commonKeywords, similarity, mutual, distanceMeters]
+      properties:
+        matchId: { type: [string, "null"], format: uuid }
+        eventId: { type: string, format: uuid }
+        otherUserId: { type: string, format: uuid }
+        name: { type: string }
+        title: { type: [string, "null"] }
+        institution: { type: [string, "null"] }
+        profilePictureUrl: { type: [string, "null"], format: uri }
+        commonKeywords:
+          type: array
+          items: { type: string }
+        similarity: { type: number, format: float }
+        mutual: { type: boolean }
+        distanceMeters: { type: number, format: double }
+    VicinityResponse:
+      type: object
+      required: [radius, matches]
+      properties:
+        radius: { type: integer }
+        matches:
+          type: array
+          items: { $ref: "#/components/schemas/Match" }
+    Problem:
+      description: RFC 7807 Problem Details
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }

@@ -52,6 +52,32 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  backend:
+    # Optional — only builds when the backend/ Gradle project is present (Phase 1+).
+    # Use `docker compose --profile backend up` to start.
+    profiles: ["backend"]
+    build:
+      context: ../backend
+      dockerfile: app/Dockerfile
+    container_name: sns-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/conf
+      SPRING_DATASOURCE_USERNAME: conf
+      SPRING_DATASOURCE_PASSWORD: conf
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      VERIFICATION_DEV_MODE: "true"
+      SERVER_PORT: "8080"
+    ports:
+      - "8080:8080"
+
 volumes:
   pgdata: {}
   miniodata: {}

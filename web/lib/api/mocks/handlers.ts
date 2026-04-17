@@ -1,4 +1,4 @@
-import { http, HttpResponse, delay } from "msw";
+import { http, HttpResponse, delay, type HttpHandler } from "msw";
 import {
   CURRENT_USER_ID,
   allUsers,
@@ -27,8 +27,18 @@ const userInterests: Interest[] = [...interestsForCurrentUser];
 const profileState: User = { ...currentUser };
 let eventRadius = 50;
 
-export const handlers = [
-  // ─── Auth ───────────────────────────────────────────────────────────
+export type MockDomain =
+  | "auth"
+  | "profile"
+  | "sns"
+  | "interests"
+  | "events"
+  | "matches"
+  | "chat"
+  | "users"
+  | "devices";
+
+export const authHandlers = [
   http.post(`${BASE}/auth/register`, async () => {
     await delay(250);
     return HttpResponse.json({ accepted: true }, { status: 202 });
@@ -73,9 +83,10 @@ export const handlers = [
     });
   }),
 
-  http.post(`${BASE}/auth/logout`, async () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/auth/logout`, async () => HttpResponse.json({ ok: true }))
+];
 
-  // ─── Profile ────────────────────────────────────────────────────────
+export const profileHandlers = [
   http.get(`${BASE}/profile`, async () => {
     await delay(150);
     return HttpResponse.json(profileState);
@@ -86,9 +97,10 @@ export const handlers = [
     Object.assign(profileState, body);
     await delay(200);
     return HttpResponse.json(profileState);
-  }),
+  })
+];
 
-  // ─── SNS ────────────────────────────────────────────────────────────
+export const snsHandlers = [
   http.get(`${BASE}/sns`, async () => {
     await delay(100);
     return HttpResponse.json(snsLinks);
@@ -113,9 +125,10 @@ export const handlers = [
     if (idx >= 0) snsLinks.splice(idx, 1);
     await delay(150);
     return HttpResponse.json({ ok: true });
-  }),
+  })
+];
 
-  // ─── Interests ──────────────────────────────────────────────────────
+export const interestsHandlers = [
   http.get(`${BASE}/interests`, async () => {
     await delay(150);
     return HttpResponse.json(userInterests);
@@ -141,9 +154,10 @@ export const handlers = [
     const idx = userInterests.findIndex((i) => i.interestId === params.id);
     if (idx >= 0) userInterests.splice(idx, 1);
     return HttpResponse.json({ ok: true });
-  }),
+  })
+];
 
-  // ─── Events ─────────────────────────────────────────────────────────
+export const eventsHandlers = [
   http.get(`${BASE}/events/joined`, async () => {
     await delay(120);
     return HttpResponse.json(events.filter((e) => joinedEventIds.has(e.eventId)));
@@ -196,17 +210,19 @@ export const handlers = [
     const body = (await request.json()) as { radius: number };
     eventRadius = body.radius;
     return HttpResponse.json({ ok: true });
-  }),
+  })
+];
 
-  // ─── Matches ───────────────────────────────────────────────────────
+export const matchesHandlers = [
   http.get(`${BASE}/matches/:matchId`, async ({ params }) => {
     const m = findMatchById(params.matchId as string);
     if (!m) return new HttpResponse(null, { status: 404 });
     await delay(120);
     return HttpResponse.json(m);
-  }),
+  })
+];
 
-  // ─── Chat ───────────────────────────────────────────────────────────
+export const chatHandlers = [
   http.get(`${BASE}/chats`, async () => {
     await delay(150);
     return HttpResponse.json(listThreads());
@@ -233,20 +249,36 @@ export const handlers = [
     return HttpResponse.json(msg, { status: 201 });
   }),
 
-  http.post(`${BASE}/chat/read`, async () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/chat/read`, async () => HttpResponse.json({ ok: true }))
+];
 
-  // ─── Users (for chat header avatar lookup) ──────────────────────────
+export const usersHandlers = [
   http.get(`${BASE}/users/:id`, async ({ params }) => {
     const u = findUser(params.id as string);
     if (!u) return new HttpResponse(null, { status: 404 });
     return HttpResponse.json(u);
   }),
 
-  http.get(`${BASE}/users`, async () => HttpResponse.json(allUsers)),
+  http.get(`${BASE}/users`, async () => HttpResponse.json(allUsers))
+];
 
-  // ─── Devices (push) ─────────────────────────────────────────────────
+export const devicesHandlers = [
   http.post(`${BASE}/devices/register`, async () => HttpResponse.json({ ok: true }))
 ];
+
+export const handlersByDomain: Record<MockDomain, HttpHandler[]> = {
+  auth: authHandlers,
+  profile: profileHandlers,
+  sns: snsHandlers,
+  interests: interestsHandlers,
+  events: eventsHandlers,
+  matches: matchesHandlers,
+  chat: chatHandlers,
+  users: usersHandlers,
+  devices: devicesHandlers
+};
+
+export const handlers = Object.values(handlersByDomain).flat();
 
 function extractKeywordsMock(text: string): string[] {
   const pool = [
