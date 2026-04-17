@@ -6,8 +6,10 @@ import {
   events,
   eventsByCode,
   findEvent,
+  findMatchById,
   findUser,
   interestsForCurrentUser,
+  listThreads,
   matchesForEvent,
   chatForPair,
   appendChatMessage,
@@ -196,7 +198,20 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
+  // ─── Matches ───────────────────────────────────────────────────────
+  http.get(`${BASE}/matches/:matchId`, async ({ params }) => {
+    const m = findMatchById(params.matchId as string);
+    if (!m) return new HttpResponse(null, { status: 404 });
+    await delay(120);
+    return HttpResponse.json(m);
+  }),
+
   // ─── Chat ───────────────────────────────────────────────────────────
+  http.get(`${BASE}/chats`, async () => {
+    await delay(150);
+    return HttpResponse.json(listThreads());
+  }),
+
   http.get(`${BASE}/chat/:eventId/:otherUserId`, async ({ params }) => {
     const messages = chatForPair(params.eventId as string, params.otherUserId as string);
     await delay(150);

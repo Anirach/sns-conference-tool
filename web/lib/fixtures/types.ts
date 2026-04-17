@@ -61,6 +61,20 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface ChatThread {
+  threadId: string;
+  eventId: UUID;
+  otherUserId: UUID;
+  otherName: string;
+  otherTitle: string | null;
+  otherInstitution: string | null;
+  otherPictureUrl: string | null;
+  lastMessagePreview: string;
+  lastMessageAt: string;
+  lastFromMe: boolean;
+  unread: number;
+}
+
 export type SnsProvider = "FACEBOOK" | "LINKEDIN";
 
 export interface SnsLink {

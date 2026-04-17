@@ -9,11 +9,12 @@ import type { Match } from "@/lib/fixtures/types";
 
 interface MatchCardProps {
   match: Match;
-  eventId: string;
+  /** @deprecated no longer used — MatchCard links to /matches/:matchId directly. Kept for API stability. */
+  eventId?: string;
   index?: number;
 }
 
-export function MatchCard({ match, eventId, index }: MatchCardProps) {
+export function MatchCard({ match, index }: MatchCardProps) {
   const pct = Math.round(match.similarity * 100);
   const parts = match.name.split(" ").filter(Boolean);
   const first = parts[0] ?? "";
@@ -23,7 +24,7 @@ export function MatchCard({ match, eventId, index }: MatchCardProps) {
 
   return (
     <Link
-      href={`/events/${eventId}/chat/${match.otherUserId}`}
+      href={`/matches/${match.matchId}`}
       className="group block bg-card px-1 py-5 transition-colors hover:bg-surface-muted hairline-b"
     >
       <article className="grid grid-cols-[64px_1fr_auto] items-start gap-4">

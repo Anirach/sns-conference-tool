@@ -89,3 +89,7 @@ export function matchesForEvent(eventId: string, radiusMeters: number): Match[] 
 export function findMatchPair(eventId: string, otherUserId: string): Match | undefined {
   return allMatches.find((m) => m.eventId === eventId && m.otherUserId === otherUserId);
 }
+
+export function findMatchById(matchId: string): Match | undefined {
+  return allMatches.find((m) => m.matchId === matchId);
+}

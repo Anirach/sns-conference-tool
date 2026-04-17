@@ -22,6 +22,10 @@ export interface LocationUpdate {
   ts: string;
 }
 
+export const matchesApi = {
+  get: (matchId: string) => api.get<Match>(`/matches/${matchId}`)
+};
+
 export const eventsApi = {
   listJoined: () => api.get<ConferenceEvent[]>("/events/joined"),
   get: (eventId: string) => api.get<ConferenceEvent>(`/events/${eventId}`),

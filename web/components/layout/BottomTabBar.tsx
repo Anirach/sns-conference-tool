@@ -6,10 +6,31 @@ import { Radar, Users, MessageCircle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 const tabs = [
-  { to: "/events/join", label: "Discover", Icon: Radar, match: (p: string) => p === "/events/join" || p === "/" || /^\/events(\/[^/]+)?$/.test(p) },
-  { to: "/interests", label: "Fellows", Icon: Users, match: (p: string) => p.startsWith("/interests") || /^\/events\/[^/]+\/vicinity/.test(p) },
-  { to: "/profile", label: "Letters", Icon: MessageCircle, match: (p: string) => p.startsWith("/profile") || /^\/events\/[^/]+\/chat/.test(p) },
-  { to: "/settings", label: "Study", Icon: Settings, match: (p: string) => p.startsWith("/settings") }
+  {
+    to: "/events/join",
+    label: "Discover",
+    Icon: Radar,
+    match: (p: string) => p === "/events/join" || p === "/" || /^\/events\/[^/]+$/.test(p)
+  },
+  {
+    to: "/matches",
+    label: "Fellows",
+    Icon: Users,
+    match: (p: string) =>
+      p === "/matches" || /^\/matches\//.test(p) || /^\/events\/[^/]+\/vicinity/.test(p) || p === "/interests"
+  },
+  {
+    to: "/chats",
+    label: "Letters",
+    Icon: MessageCircle,
+    match: (p: string) => p === "/chats" || /^\/events\/[^/]+\/chat/.test(p) || p.startsWith("/profile")
+  },
+  {
+    to: "/settings",
+    label: "Study",
+    Icon: Settings,
+    match: (p: string) => p.startsWith("/settings")
+  }
 ];
 
 const HIDDEN_PATTERNS = [
@@ -17,7 +38,8 @@ const HIDDEN_PATTERNS = [
   /^\/register$/,
   /^\/verify$/,
   /^\/login$/,
-  /^\/events\/[^/]+\/chat\/[^/]+$/
+  /^\/events\/[^/]+\/chat\/[^/]+$/,
+  /^\/matches\/[^/]+$/
 ];
 
 export function BottomTabBar() {

@@ -1,5 +1,5 @@
-import type { ChatMessage } from "./types";
-import { CURRENT_USER_ID } from "./users";
+import type { ChatMessage, ChatThread } from "./types";
+import { CURRENT_USER_ID, findUser } from "./users";
 
 const NEURIPS = "evt-neurips-2026-bkk";
 
@@ -67,4 +67,36 @@ export function chatForPair(eventId: string, otherUserId: string): ChatMessage[]
 
 export function appendChatMessage(msg: ChatMessage): void {
   chatHistory.push(msg);
+}
+
+export function listThreads(): ChatThread[] {
+  const byOther = new Map<string, ChatMessage[]>();
+  for (const m of chatHistory) {
+    const other = m.fromUserId === CURRENT_USER_ID ? m.toUserId : m.fromUserId;
+    const key = `${m.eventId}::${other}`;
+    if (!byOther.has(key)) byOther.set(key, []);
+    byOther.get(key)!.push(m);
+  }
+  const threads: ChatThread[] = [];
+  for (const [key, msgs] of byOther) {
+    const [eventId, otherUserId] = key.split("::");
+    const sorted = msgs.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const last = sorted[sorted.length - 1];
+    const other = findUser(otherUserId);
+    if (!other) continue;
+    threads.push({
+      threadId: `thread-${eventId}-${otherUserId}`,
+      eventId,
+      otherUserId,
+      otherName: `${other.firstName} ${other.lastName}`,
+      otherTitle: other.academicTitle,
+      otherInstitution: other.institution,
+      otherPictureUrl: other.profilePictureUrl,
+      lastMessagePreview: last.content,
+      lastMessageAt: last.createdAt,
+      lastFromMe: last.fromUserId === CURRENT_USER_ID,
+      unread: sorted.filter((m) => !m.readFlag && m.toUserId === CURRENT_USER_ID).length
+    });
+  }
+  return threads.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
 }
