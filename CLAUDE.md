@@ -30,10 +30,8 @@ pnpm test:e2e      # Playwright smoke (auto-starts `pnpm dev`)
 ```
 
 ### Backend (`cd backend`)
+The Gradle wrapper (`gradlew`, `gradle/wrapper/gradle-wrapper.jar`) is committed, so:
 ```bash
-# One-time: materialise the Gradle wrapper (requires Gradle 8.10+ on PATH)
-gradle wrapper --gradle-version 8.10
-
 ./gradlew :app:bootRun            # run the Spring Boot app
 ./gradlew :app:test               # unit / slice tests
 ./gradlew :app:integrationTest    # Testcontainers-backed flows (needs Docker)
@@ -56,14 +54,18 @@ flutter run                       # Android emulator uses http://10.0.2.2:3000
 Override at build time: `flutter run --dart-define=FRONTEND_ORIGIN=https://staging.example.com`.
 
 ### Infrastructure (`cd infra`)
+Two compose profiles let you bring up the right slice:
 ```bash
-# Dev dependencies only
+# Data plane only (Postgres + PostGIS, Redis, MinIO, MailHog)
 docker compose -f docker-compose.dev.yml up -d
-# Postgres+PostGIS :5432, Redis :6379, MinIO :9000/:9001, MailHog :1025/:8025
 
-# Include the backend (builds from backend/app/Dockerfile)
-docker compose -f docker-compose.dev.yml --profile backend up --build
+# + backend (builds from backend/app/Dockerfile, exposes :8080)
+docker compose -f docker-compose.dev.yml --profile backend up -d --build
+
+# + web (builds from web/Dockerfile.dev, runs `next dev` with bind-mounted source for HMR)
+docker compose -f docker-compose.dev.yml --profile backend --profile web up -d --build
 ```
+The `web` container reaches the backend via `BACKEND_PROXY_TARGET=http://backend:8080` (Next.js rewrite). Default `NEXT_PUBLIC_MOCK_API=1` keeps MSW mocks active inside the container — flip to `"0"` in the compose env to drive the real backend.
 
 ### Wiring web against real backend
 In `web/.env.local`:

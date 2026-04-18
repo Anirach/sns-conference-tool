@@ -58,23 +58,29 @@ Inter-module dependencies: `:app` depends on everything; `:matching` on `:event`
 
 ## First-time setup
 
-The Gradle wrapper jar is intentionally not committed yet. Bootstrap once with a system Gradle:
-
-```bash
-# Requires Gradle 8.10+ and Java 21 on PATH
-gradle wrapper --gradle-version 8.10
-```
-
-This writes `gradlew`, `gradlew.bat`, and `gradle/wrapper/gradle-wrapper.jar`. Commit them on first use.
+Nothing required — the Gradle wrapper (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`) is committed. Just need Java 21 on PATH (or run via Docker, which doesn't need a host JDK at all).
 
 ## Build & run
 
+Two paths — pick one.
+
+**Path A — All-in-Docker (no host JDK):**
+
 ```bash
-# From repo root: start dependencies (Postgres+PostGIS, Redis, MinIO, MailHog)
+cd infra
+docker compose -f docker-compose.dev.yml --profile backend up -d --build
+```
+
+This brings up the data plane and the backend container. Add `--profile web` to also boot the Next.js dev server in a container (see top-level [README.md](../README.md#option-a--all-in-docker-5-minutes-zero-host-tooling-beyond-docker)).
+
+**Path B — Host JDK (sub-second restart cycles via Spring DevTools):**
+
+```bash
+# Bring up the data plane in containers
 cd infra && docker compose -f docker-compose.dev.yml up -d
 
-# Run the app
-cd backend
+# Run the app on the host JDK
+cd ../backend
 ./gradlew :app:bootRun
 ```
 
@@ -153,9 +159,21 @@ Unit tests per module cover the pure-logic pieces: `SimilarityEngineTest`, `TfKe
 
 ```bash
 cd infra
-docker compose -f docker-compose.dev.yml --profile backend up --build
+docker compose -f docker-compose.dev.yml --profile backend up -d --build
 ```
-Builds from `backend/app/Dockerfile` and wires to Postgres + MailHog + Redis + MinIO.
+Builds from [`backend/app/Dockerfile`](app/Dockerfile) and wires to Postgres, Redis, MailHog, and MinIO via the compose network. Add `--profile web` to also bring up the Next.js dev server in a sibling container (see [`infra/docker-compose.dev.yml`](../infra/docker-compose.dev.yml)).
+
+Container env (set in compose, override via `.env`):
+
+| Var | Value | Purpose |
+|---|---|---|
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/conf` | Compose-internal DNS name of Postgres |
+| `SPRING_DATA_REDIS_HOST` | `redis` | Spring Data Redis target |
+| `REDISSON_ADDRESS` | `redis://redis:6379` | Redisson rate limiter target |
+| `SMTP_HOST` / `SMTP_PORT` | `mailhog` / `1025` | MailHog catches verification emails |
+| `CHAT_RELAY` | `redis` | Multi-pod chat fan-out via `RedisChatRelay` |
+| `RATE_LIMIT_BACKEND` | `memory` | Switch to `redis` (Redisson) for multi-pod prod |
+| `VERIFICATION_DEV_MODE` | `true` | TAN is `123456` |
 
 ## Configuration reference
 
