@@ -31,9 +31,9 @@ public class ChatController {
     }
 
     @GetMapping("/api/chats")
-    public Object threads(JwtAuthenticationToken auth) {
+    public java.util.List<ChatDtos.ChatThread> threads(JwtAuthenticationToken auth) {
         var me = UUID.fromString(auth.getToken().getSubject());
-        return service.threadHeads(me);
+        return service.listThreads(me);
     }
 
     @PostMapping("/api/chat/send")

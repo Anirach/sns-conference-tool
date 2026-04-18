@@ -6,6 +6,7 @@ dependencies {
     api(project(":common"))
     api(project(":identity"))
     api(project(":event"))
+    api(project(":profile"))
     api("org.springframework.boot:spring-boot-starter-web")
     api("org.springframework.boot:spring-boot-starter-websocket")
     api("org.springframework.boot:spring-boot-starter-data-jpa")

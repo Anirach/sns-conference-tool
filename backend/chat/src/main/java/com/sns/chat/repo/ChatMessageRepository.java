@@ -20,6 +20,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
 
     long countByFromUserIdOrToUserId(UUID fromUserId, UUID toUserId);
 
+    /** Unread messages addressed TO {@code me} from {@code other} in this event. */
+    long countByEventIdAndFromUserIdAndToUserIdAndReadFlagFalse(
+        UUID eventId, UUID fromUserId, UUID toUserId);
+
     @Query("""
         SELECT m FROM ChatMessageEntity m
         WHERE m.eventId = :eventId
