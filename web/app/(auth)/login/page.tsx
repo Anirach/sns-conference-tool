@@ -51,7 +51,14 @@ function LoginInner() {
     try {
       const { data } = await authApi.login(values);
       await setSession(data);
-      router.push("/events/join");
+      // Honour an explicit ?redirect= (the admin layout passes /admin when a non-authed
+      // visitor lands there). Otherwise auto-route admins to the management console — they
+      // can still get back to the participant app via the "Return to participant app" link
+      // in AdminShell.
+      const requested = search.get("redirect");
+      const role = useAuthStore.getState().role;
+      const dest = requested ?? (role === "ADMIN" || role === "SUPER_ADMIN" ? "/admin" : "/events/join");
+      router.push(dest);
     } catch {
       toast({ title: "Admission refused", variant: "error" });
     }
