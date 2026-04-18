@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "sns.jwt")
 public record SnsJwtProperties(
     String issuer,
+    String audience,
     Duration accessTokenTtl,
     Duration refreshTokenTtl,
     Duration clockSkew,

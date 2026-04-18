@@ -5,8 +5,10 @@ import com.sns.identity.domain.UserEntity;
 import com.sns.identity.repo.UserRepository;
 import com.sns.identity.security.RefreshTokenService;
 import com.sns.identity.security.SnsJwtService;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final ProfileWriter profileWriter;
     private final AuditLogger audit;
+    private final PasswordPolicy passwordPolicy;
 
     public AuthService(
         UserRepository users,
@@ -30,7 +33,8 @@ public class AuthService {
         RefreshTokenService refresh,
         PasswordEncoder passwordEncoder,
         ProfileWriter profileWriter,
-        AuditLogger audit
+        AuditLogger audit,
+        PasswordPolicy passwordPolicy
     ) {
         this.users = users;
         this.verification = verification;
@@ -39,6 +43,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.profileWriter = profileWriter;
         this.audit = audit;
+        this.passwordPolicy = passwordPolicy;
     }
 
     @Transactional
@@ -63,6 +68,8 @@ public class AuthService {
         String email = verification.claimVerificationToken(req.verificationToken())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Verification token invalid"));
 
+        passwordPolicy.validate(email, req.password());
+
         UserEntity user = users.findByEmailIgnoreCase(email).orElseGet(() -> {
             var u = new UserEntity();
             u.setEmail(email);
@@ -78,13 +85,28 @@ public class AuthService {
         return issueTokens(user.getUserId());
     }
 
+    /**
+     * BCrypt hash of the literal string {@code "$phantom-password$"}, computed once at class load
+     * with the same cost factor as the production encoder (12). When a login arrives for an
+     * unknown email we still run {@link PasswordEncoder#matches(CharSequence, String)} against
+     * this hash so the response timing matches the bad-password path exactly. Without this,
+     * "user does not exist" returns roughly 200 ms faster than "password mismatch", which is
+     * enough to enumerate accounts.
+     */
+    private static final String PHANTOM_HASH =
+        new BCryptPasswordEncoder(12).encode("$phantom-password$");
+
     @Transactional
     public AuthDtos.AuthTokens login(String email, String password) {
-        UserEntity user = users.findByEmailIgnoreCase(email.trim().toLowerCase())
-            .orElseThrow(() -> {
-                audit.log("auth.login.failure", null);
-                return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
-            });
+        Optional<UserEntity> maybe = users.findByEmailIgnoreCase(email.trim().toLowerCase());
+        if (maybe.isEmpty()) {
+            // Burn the same wall-clock as a real BCrypt compare so timing doesn't leak account
+            // existence; deliberately ignore the result.
+            passwordEncoder.matches(password, PHANTOM_HASH);
+            audit.log("auth.login.failure", null);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+        UserEntity user = maybe.get();
         if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
             audit.log("auth.login.failure", user.getUserId());
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
@@ -100,9 +122,16 @@ public class AuthService {
     @Transactional
     public AuthDtos.AuthTokens refresh(String presentedJti) {
         UUID jti = parseUuid(presentedJti);
-        var next = refresh.rotate(jti);
-        audit.log("auth.refresh", next.getUserId());
-        return new AuthDtos.AuthTokens(jwt.issueAccessToken(next.getUserId()), next.getJti().toString(), next.getUserId());
+        try {
+            var next = refresh.rotate(jti);
+            audit.log("auth.refresh", next.getUserId());
+            return new AuthDtos.AuthTokens(jwt.issueAccessToken(next.getUserId()), next.getJti().toString(), next.getUserId());
+        } catch (RefreshTokenService.InvalidRefreshTokenException e) {
+            if ("token reused".equals(e.getMessage())) {
+                audit.log("auth.refresh.reuse_detected", null, "refresh_token", jti.toString());
+            }
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+        }
     }
 
     @Transactional

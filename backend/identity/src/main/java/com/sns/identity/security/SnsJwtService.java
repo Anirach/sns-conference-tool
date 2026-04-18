@@ -30,13 +30,16 @@ public class SnsJwtService {
         Instant now = Instant.now();
         Instant exp = now.plus(props.accessTokenTtl());
         try {
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            var builder = new JWTClaimsSet.Builder()
                 .issuer(props.issuer())
                 .subject(userId.toString())
                 .jwtID(UUID.randomUUID().toString())
                 .issueTime(Date.from(now))
-                .expirationTime(Date.from(exp))
-                .build();
+                .expirationTime(Date.from(exp));
+            if (props.audience() != null && !props.audience().isBlank()) {
+                builder.audience(props.audience());
+            }
+            JWTClaimsSet claims = builder.build();
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
                 .keyID(keys.keyId())
                 .type(com.nimbusds.jose.JOSEObjectType.JWT)

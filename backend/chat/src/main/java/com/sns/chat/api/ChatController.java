@@ -37,13 +37,13 @@ public class ChatController {
     }
 
     @PostMapping("/api/chat/send")
-    public ChatDtos.ChatMessage send(JwtAuthenticationToken auth, @RequestBody ChatDtos.SendRequest req) {
+    public ChatDtos.ChatMessage send(JwtAuthenticationToken auth, @jakarta.validation.Valid @RequestBody ChatDtos.SendRequest req) {
         var from = UUID.fromString(auth.getToken().getSubject());
         return service.send(from, req);
     }
 
     @PostMapping("/api/chat/read")
-    public Map<String, Object> read(JwtAuthenticationToken auth, @RequestBody ChatDtos.MarkReadRequest req) {
+    public Map<String, Object> read(JwtAuthenticationToken auth, @jakarta.validation.Valid @RequestBody ChatDtos.MarkReadRequest req) {
         var me = UUID.fromString(auth.getToken().getSubject());
         service.markRead(me, req.messageId());
         return Map.of("ok", true);

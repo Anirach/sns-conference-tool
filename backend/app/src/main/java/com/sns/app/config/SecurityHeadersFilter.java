@@ -34,6 +34,12 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
             + "frame-ancestors 'self'; "
             + "object-src 'none'; "
             + "base-uri 'self'");
+        // Auth responses (tokens, verification cookies, etc.) must never sit in any cache.
+        // Misconfigured CDNs / shared proxies have leaked bearer tokens this way before.
+        if (req.getRequestURI() != null && req.getRequestURI().startsWith("/api/auth/")) {
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            res.setHeader("Pragma", "no-cache");
+        }
         chain.doFilter(req, res);
     }
 }

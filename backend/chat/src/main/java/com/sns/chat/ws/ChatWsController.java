@@ -31,7 +31,7 @@ public class ChatWsController {
     }
 
     @MessageMapping("/chat.send")
-    public void send(JwtAuthenticationToken auth, ChatDtos.SendRequest req) {
+    public void send(JwtAuthenticationToken auth, @jakarta.validation.Valid ChatDtos.SendRequest req) {
         UUID from = UUID.fromString(auth.getToken().getSubject());
         service.send(from, req);
         // Fan-out happens in onMessageSent after the persist transaction commits.
@@ -39,7 +39,7 @@ public class ChatWsController {
 
     @MessageMapping("/chat.markRead")
     @SendToUser("/queue/chat.readReceipts")
-    public ChatDtos.MarkReadRequest markRead(JwtAuthenticationToken auth, ChatDtos.MarkReadRequest req) {
+    public ChatDtos.MarkReadRequest markRead(JwtAuthenticationToken auth, @jakarta.validation.Valid ChatDtos.MarkReadRequest req) {
         UUID me = UUID.fromString(auth.getToken().getSubject());
         service.markRead(me, req.messageId());
         return req;

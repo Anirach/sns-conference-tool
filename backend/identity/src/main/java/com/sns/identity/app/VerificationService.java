@@ -59,7 +59,10 @@ public class VerificationService {
         if (maybe.isEmpty()) return Optional.empty();
         EmailVerificationEntity ev = maybe.get();
         if (ev.getExpiresAt().isBefore(OffsetDateTime.now())) return Optional.empty();
-        if (!ev.getTanHash().equals(hash(tan))) return Optional.empty();
+        // Constant-time hash compare so TAN guesses can't be timing-attacked.
+        byte[] storedHash = ev.getTanHash().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] providedHash = hash(tan).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (!java.security.MessageDigest.isEqual(storedHash, providedHash)) return Optional.empty();
         ev.setConsumedAt(OffsetDateTime.now());
         UUID verificationToken = UUID.randomUUID();
         ev.setVerificationToken(verificationToken);
