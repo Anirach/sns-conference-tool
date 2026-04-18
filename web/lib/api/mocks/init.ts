@@ -29,7 +29,23 @@ export function resolveMockDomains(): MockDomain[] {
 export async function initMockApi(): Promise<void> {
   if (typeof window === "undefined") return;
   const domains = resolveMockDomains();
-  if (domains.length === 0) return;
+
+  // If mocks are disabled but an MSW service worker from a previous session is still
+  // registered, it'll sit between the browser and the network and mangle requests
+  // (observed symptom: /api/auth/login returns 401 in the browser while curl works fine).
+  // Proactively unregister every /mockServiceWorker.js so the page self-heals on the
+  // next reload without requiring the user to clear site data.
+  if (domains.length === 0) {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+      for (const r of regs) {
+        const url = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || "";
+        if (url.includes("mockServiceWorker")) await r.unregister().catch(() => null);
+      }
+    }
+    return;
+  }
+
   if ((window as unknown as { __mswReady?: boolean }).__mswReady) return;
 
   const { buildWorker } = await import("./browser");
