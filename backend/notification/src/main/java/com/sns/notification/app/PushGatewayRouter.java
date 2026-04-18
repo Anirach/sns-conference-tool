@@ -2,63 +2,61 @@ package com.sns.notification.app;
 
 import com.sns.notification.domain.DeviceTokenEntity;
 import com.sns.notification.domain.DeviceTokenEntity.Platform;
-import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
  * The only {@link PushGateway} bean {@link NotificationService} sees. Routes a delivery to the
- * first backing gateway that accepts the device's platform.
+ * pre-resolved gateway for the device's platform, with a logging fallback.
  * <p>
- * Order: {@code FcmPushGateway}, {@code ApnsPushGateway}, {@code LoggingPushGateway}. The logging
- * gateway is registered unconditionally and acts as the fallback when no real gateway is
- * configured; the router only falls through to it if a platform-specific gateway declines.
+ * Resolution happens once at construction — the previous implementation scanned every delegate
+ * and string-matched class names on every {@code deliver()} call. With Fcm + Apns + Logging that
+ * was 3 string compares per platform decision per push; at scale (push.drain-interval-ms = 5s,
+ * 50 outbox rows per drain) it added up.
  */
 @Component
 @Primary
 public class PushGatewayRouter implements PushGateway {
 
-    private final List<PushGateway> ordered;
+    private final Map<Platform, PushGateway> primary;
+    private final PushGateway fallback;
 
     public PushGatewayRouter(List<PushGateway> delegates) {
-        List<PushGateway> filtered = new ArrayList<>(delegates);
-        filtered.removeIf(g -> g instanceof PushGatewayRouter);
-        filtered.sort(Comparator.comparingInt(PushGatewayRouter::rank));
-        this.ordered = List.copyOf(filtered);
-    }
-
-    private static int rank(PushGateway g) {
-        String n = g.getClass().getSimpleName();
-        if (n.equals("FcmPushGateway"))  return 0;
-        if (n.equals("ApnsPushGateway")) return 1;
-        return 10;
+        Map<Platform, PushGateway> p = new EnumMap<>(Platform.class);
+        PushGateway loggingFallback = null;
+        for (PushGateway g : delegates) {
+            if (g instanceof PushGatewayRouter) continue;
+            switch (g.getClass().getSimpleName()) {
+                case "FcmPushGateway" -> {
+                    p.put(Platform.ANDROID, g);
+                    p.put(Platform.WEB, g);
+                }
+                case "ApnsPushGateway" -> p.put(Platform.IOS, g);
+                case "LoggingPushGateway" -> loggingFallback = g;
+                default -> {
+                    // Custom gateways register themselves; unknown names route via fallback.
+                }
+            }
+        }
+        this.primary = Map.copyOf(p);
+        this.fallback = Optional.ofNullable(loggingFallback)
+            .orElseThrow(() -> new IllegalStateException(
+                "No LoggingPushGateway registered — at least one PushGateway must always be present."));
     }
 
     @Override
     public void deliver(DeviceTokenEntity device, String kind, Map<String, Object> payload) throws Exception {
-        Exception lastError = null;
-        for (PushGateway g : ordered) {
-            if (!accepts(g, device.getPlatform())) continue;
-            try {
-                g.deliver(device, kind, payload);
-                return;
-            } catch (UnsupportedOperationException uoe) {
-                // Try the next gateway.
-            } catch (Exception e) {
-                lastError = e;
-            }
+        PushGateway resolved = primary.getOrDefault(device.getPlatform(), fallback);
+        try {
+            resolved.deliver(device, kind, payload);
+        } catch (UnsupportedOperationException uoe) {
+            // The chosen gateway opted out of this device — fall back to logging so the outbox
+            // marks the row delivered (debug visibility, not a true delivery).
+            fallback.deliver(device, kind, payload);
         }
-        if (lastError != null) throw lastError;
-    }
-
-    private static boolean accepts(PushGateway gateway, Platform platform) {
-        String n = gateway.getClass().getSimpleName();
-        return switch (platform) {
-            case IOS -> n.equals("ApnsPushGateway") || n.equals("LoggingPushGateway");
-            case ANDROID, WEB -> n.equals("FcmPushGateway") || n.equals("LoggingPushGateway");
-        };
     }
 }

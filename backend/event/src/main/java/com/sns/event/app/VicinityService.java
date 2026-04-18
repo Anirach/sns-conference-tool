@@ -25,7 +25,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class VicinityService {
 
+    /**
+     * The {@code similarity_matches} table enforces {@code user_id_a < user_id_b} via a CHECK
+     * constraint, so the canonical pair lookup avoids {@code LEAST/GREATEST} (which defeat the
+     * unique B-tree index {@code idx_matches_pair}) by branching on the lexicographic order of
+     * peer vs. me. The OR expands to two structurally identical lookups, each one of which
+     * the planner can satisfy with a direct index probe.
+     * <p>
+     * The CTE also avoids re-reading {@code me}'s row from {@code participations} once per
+     * candidate.
+     */
     private static final String QUERY = """
+        WITH me AS (
+          SELECT user_id, last_position
+          FROM participations
+          WHERE event_id = ?::uuid AND user_id = ?::uuid
+        )
         SELECT
           m.match_id,
           peer.user_id  AS other_user_id,
@@ -39,15 +54,17 @@ public class VicinityService {
           prof.institution,
           prof.profile_picture_url
         FROM participations peer
-        JOIN participations me
-          ON me.event_id = peer.event_id
-         AND me.user_id  = ?
+        CROSS JOIN me
         LEFT JOIN profiles prof ON prof.user_id = peer.user_id
         LEFT JOIN similarity_matches m
-          ON m.event_id = peer.event_id
-         AND m.user_id_a = LEAST(peer.user_id, me.user_id)
-         AND m.user_id_b = GREATEST(peer.user_id, me.user_id)
-        WHERE peer.event_id = ?
+          ON m.event_id = ?::uuid
+         AND ((peer.user_id < me.user_id
+               AND m.user_id_a = peer.user_id
+               AND m.user_id_b = me.user_id)
+           OR (peer.user_id > me.user_id
+               AND m.user_id_a = me.user_id
+               AND m.user_id_b = peer.user_id))
+        WHERE peer.event_id = ?::uuid
           AND peer.user_id <> me.user_id
           AND peer.last_update > now() - INTERVAL '5 minutes'
           AND me.last_position IS NOT NULL
@@ -89,7 +106,7 @@ public class VicinityService {
                 rs.getBoolean("mutual"),
                 rs.getDouble("distance_meters")
             );
-        }, userId, eventId, (double) radiusMeters);
+        }, eventId, userId, eventId, eventId, (double) radiusMeters);
     }
 
     /**

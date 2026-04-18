@@ -60,9 +60,8 @@ public class EventService {
 
     @Transactional(readOnly = true)
     public List<EventDtos.EventDto> listJoined(UUID userId) {
-        return participations.findByUserId(userId).stream()
-            .map(p -> events.findById(p.getEventId()).orElse(null))
-            .filter(e -> e != null)
+        // Single JOIN query — replaces the prior N+1 (findByUserId → loop findById).
+        return events.findJoinedByUserId(userId).stream()
             .map(EventService::toDto)
             .toList();
     }
@@ -99,7 +98,10 @@ public class EventService {
             return np;
         });
         participations.save(p);
-        publisher.publishEvent(new MatchRecomputeRequested(event.getEventId()));
+        // Single-user join → incremental recompute path. Coarse MatchRecomputeRequested is
+        // reserved for the leave path and the scheduled sweep, where we don't have a single
+        // canonical user to compare against.
+        publisher.publishEvent(new com.sns.common.events.UserJoinedEvent(event.getEventId(), userId));
         return new EventDtos.JoinResponse(toDto(event), p.getJoinedAt());
     }
 

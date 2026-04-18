@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,15 +22,20 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Persists pending push notifications into {@code push_outbox} and drains them on a schedule
- * with at-least-once semantics. Domain events (match found, chat message sent) convert into
- * outbox rows synchronously so a crash between persist and deliver never loses a notification;
- * duplicates are acceptable because device tokens tolerate them.
+ * with at-least-once semantics.
+ * <p>
+ * Concurrency: the drain uses {@code FOR UPDATE SKIP LOCKED} (see
+ * {@link PushOutboxRepository#claimPendingIds(int)}) so multiple pods can drain in parallel
+ * without picking the same row. The claim runs in a short write transaction that only
+ * increments the attempts counter; the subsequent delivery (network call to FCM / APNs) happens
+ * outside that transaction so row locks are released before any external I/O.
  */
 @Service
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
     private static final int MAX_ATTEMPTS = 5;
+    private static final int BATCH_SIZE = 50;
 
     private final DeviceTokenRepository devices;
     private final PushOutboxRepository outbox;
@@ -80,10 +84,19 @@ public class NotificationService {
 
     @Scheduled(fixedDelayString = "${sns.push.drain-interval-ms:5000}")
     public void drain() {
-        List<PushOutboxEntity> batch = outbox.findByStatus(Status.PENDING, PageRequest.of(0, 50));
-        for (var row : batch) {
-            deliverOne(row);
+        List<UUID> ids = claim();
+        if (ids.isEmpty()) return;
+        for (UUID id : ids) {
+            outbox.findById(id).ifPresent(this::deliverOne);
         }
+    }
+
+    /** Short write tx: lock + increment attempts. Returns the IDs this pod owns for this drain. */
+    @Transactional
+    protected List<UUID> claim() {
+        List<UUID> ids = outbox.claimPendingIds(BATCH_SIZE);
+        if (!ids.isEmpty()) outbox.incrementAttempts(ids);
+        return ids;
     }
 
     @Transactional
@@ -108,7 +121,7 @@ public class NotificationService {
                 log.warn("push deliver failed user={} kind={} err={}", row.getUserId(), row.getKind(), lastError);
             }
         }
-        row.setAttempts((short) (row.getAttempts() + 1));
+        // attempts was already incremented by claim() — do not double-increment here.
         if (anySuccess) {
             row.setStatus(Status.DELIVERED);
             row.setDeliveredAt(OffsetDateTime.now());

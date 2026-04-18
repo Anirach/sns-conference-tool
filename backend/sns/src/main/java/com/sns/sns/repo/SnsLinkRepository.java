@@ -10,4 +10,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface SnsLinkRepository extends JpaRepository<SnsLinkEntity, UUID> {
     List<SnsLinkEntity> findByUserId(UUID userId);
     Optional<SnsLinkEntity> findByUserIdAndProvider(UUID userId, Provider provider);
+
+    /** Stale-link slice for {@code SnsEnrichmentJob}. Replaces a full-table scan + filter. */
+    List<SnsLinkEntity> findByLastFetchIsNullOrLastFetchBefore(
+        java.time.OffsetDateTime cutoff,
+        org.springframework.data.domain.Pageable page
+    );
 }

@@ -68,8 +68,9 @@ public class ExportController {
 
         UserDto me = profiles.get(userId);
         var userInterests = interests.listFor(userId);
-        var userMatches = matches.findAll().stream()
-            .filter(m -> m.getUserIdA().equals(userId) || m.getUserIdB().equals(userId))
+        // Indexed user-scoped queries — replaces the prior findAll().stream().filter() patterns
+        // that loaded every match / chat row in the database.
+        var userMatches = matches.findByUserIdAOrUserIdB(userId, userId).stream()
             .map(m -> Map.<String, Object>of(
                 "matchId", m.getMatchId().toString(),
                 "eventId", m.getEventId().toString(),
@@ -80,8 +81,7 @@ public class ExportController {
             ))
             .collect(Collectors.toList());
         var userChats = chatService.threadHeads(userId);
-        var messages = chatMessages.findAll().stream()
-            .filter(m -> m.getFromUserId().equals(userId) || m.getToUserId().equals(userId))
+        var messages = chatMessages.findByFromUserIdOrToUserIdOrderByCreatedAtAsc(userId, userId).stream()
             .map(ChatService::toDto)
             .toList();
 

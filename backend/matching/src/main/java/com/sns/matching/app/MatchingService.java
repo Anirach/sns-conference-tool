@@ -82,12 +82,16 @@ public class MatchingService {
         }
     }
 
+    /**
+     * Full O(N²) recompute. Used only by the scheduled sweep — runtime triggers should prefer
+     * {@link #recomputeForUser(UUID, UUID)}.
+     */
     @Transactional
     public int recompute(UUID eventId) {
         List<ParticipationEntity> ps = participations.findByEventId(eventId);
         if (ps.size() < 2) return 0;
 
-        Map<UUID, Map<String, Double>> vectorByUser = new HashMap<>();
+        Map<UUID, Map<String, Double>> vectorByUser = new HashMap<>(ps.size());
         for (ParticipationEntity p : ps) {
             vectorByUser.put(p.getUserId(), userVector(p.getUserId()));
         }
@@ -97,33 +101,74 @@ public class MatchingService {
         userIds.sort(UUID::compareTo);
         for (int i = 0; i < userIds.size(); i++) {
             for (int j = i + 1; j < userIds.size(); j++) {
-                UUID a = userIds.get(i);
-                UUID b = userIds.get(j);
-                Map<String, Double> va = vectorByUser.get(a);
-                Map<String, Double> vb = vectorByUser.get(b);
-                double sim = engine.cosine(va, vb);
-                if (sim < SIMILARITY_THRESHOLD) continue;
-
-                List<String> common = engine.commonKeywords(va, vb, COMMON_KEYWORDS_LIMIT);
-                SimilarityMatchEntity m = matches.findByEventIdAndUserIdAAndUserIdB(eventId, a, b)
-                    .orElseGet(SimilarityMatchEntity::new);
-                boolean isNew = (m.getMatchId() == null);
-                m.setEventId(eventId);
-                m.setUserIdA(a);
-                m.setUserIdB(b);
-                m.setSimilarity((float) sim);
-                m.setCommonKeywords(common.toArray(new String[0]));
-                m.setMutual(true); // both users are current participants
-                var saved = matches.save(m);
-                upserts++;
-                if (isNew) {
-                    publisher.publishEvent(new MatchFound(
-                        saved.getMatchId(), eventId, a, b, (float) sim, common));
+                if (upsertPair(eventId, userIds.get(i), userIds.get(j),
+                        vectorByUser.get(userIds.get(i)), vectorByUser.get(userIds.get(j)))) {
+                    upserts++;
                 }
             }
         }
         log.debug("recompute({}) → {} upserts over {} participants", eventId, upserts, userIds.size());
         return upserts;
+    }
+
+    /**
+     * Incremental recompute: only pairs involving {@code userId}. O(N) where N is the
+     * participant count for the event. Driven by {@code UserInterestsChanged} and
+     * {@code UserJoinedEvent} so an interest edit or a single join doesn't trigger a full sweep.
+     */
+    @Transactional
+    public int recomputeForUser(UUID eventId, UUID userId) {
+        List<ParticipationEntity> peers = participations.findByEventId(eventId);
+        if (peers.size() < 2) return 0;
+
+        Map<String, Double> myVector = userVector(userId);
+        if (myVector.isEmpty()) {
+            log.debug("recomputeForUser({}, {}) → empty vector, skipping", eventId, userId);
+            return 0;
+        }
+
+        int upserts = 0;
+        for (ParticipationEntity p : peers) {
+            if (p.getUserId().equals(userId)) continue;
+            if (upsertPair(eventId, userId, p.getUserId(), myVector, userVector(p.getUserId()))) {
+                upserts++;
+            }
+        }
+        log.debug("recomputeForUser({}, {}) → {} upserts over {} peers", eventId, userId, upserts, peers.size() - 1);
+        return upserts;
+    }
+
+    private boolean upsertPair(
+        UUID eventId,
+        UUID first,
+        UUID second,
+        Map<String, Double> vFirst,
+        Map<String, Double> vSecond
+    ) {
+        boolean firstIsA = first.compareTo(second) < 0;
+        UUID a = firstIsA ? first : second;
+        UUID b = firstIsA ? second : first;
+        Map<String, Double> va = firstIsA ? vFirst : vSecond;
+        Map<String, Double> vb = firstIsA ? vSecond : vFirst;
+
+        double sim = engine.cosine(va, vb);
+        if (sim < SIMILARITY_THRESHOLD) return false;
+
+        List<String> common = engine.commonKeywords(va, vb, COMMON_KEYWORDS_LIMIT);
+        SimilarityMatchEntity m = matches.findByEventIdAndUserIdAAndUserIdB(eventId, a, b)
+            .orElseGet(SimilarityMatchEntity::new);
+        boolean isNew = (m.getMatchId() == null);
+        m.setEventId(eventId);
+        m.setUserIdA(a);
+        m.setUserIdB(b);
+        m.setSimilarity((float) sim);
+        m.setCommonKeywords(common.toArray(new String[0]));
+        m.setMutual(true);
+        var saved = matches.save(m);
+        if (isNew) {
+            publisher.publishEvent(new MatchFound(saved.getMatchId(), eventId, a, b, (float) sim, common));
+        }
+        return true;
     }
 
     private Map<String, Double> userVector(UUID userId) {

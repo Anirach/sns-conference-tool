@@ -55,17 +55,27 @@ public class SnsEnrichmentJob {
         this.staleHours = staleHours;
     }
 
+    private static final int PAGE_SIZE = 100;
+
     @Scheduled(cron = "${sns.enrichment.cron:0 15 */6 * * *}")
     public void sweep() {
         OffsetDateTime cutoff = OffsetDateTime.now().minusHours(staleHours);
-        List<SnsLinkEntity> all = repo.findAll();
-        for (SnsLinkEntity link : all) {
-            if (link.getLastFetch() != null && link.getLastFetch().isAfter(cutoff)) continue;
-            try {
-                enrich(link);
-            } catch (Exception e) {
-                log.warn("sns.enrich failed link={} provider={} err={}", link.getSnsId(), link.getProvider(), e.toString());
+        // Page through stale rows only — never full-scan sns_links.
+        while (true) {
+            List<SnsLinkEntity> page = repo.findByLastFetchIsNullOrLastFetchBefore(
+                cutoff,
+                org.springframework.data.domain.PageRequest.of(0, PAGE_SIZE)
+            );
+            if (page.isEmpty()) return;
+            for (SnsLinkEntity link : page) {
+                try {
+                    enrich(link);
+                } catch (Exception e) {
+                    log.warn("sns.enrich failed link={} provider={} err={}",
+                        link.getSnsId(), link.getProvider(), e.toString());
+                }
             }
+            if (page.size() < PAGE_SIZE) return;
         }
     }
 

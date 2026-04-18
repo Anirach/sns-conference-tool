@@ -2,6 +2,7 @@ package com.sns.matching.app;
 
 import com.sns.common.events.MatchRecomputeRequested;
 import com.sns.common.events.UserInterestsChanged;
+import com.sns.common.events.UserJoinedEvent;
 import com.sns.event.repo.ParticipationRepository;
 import java.util.List;
 import org.slf4j.Logger;
@@ -24,6 +25,11 @@ public class MatchingEventListener {
         this.participations = participations;
     }
 
+    /**
+     * Coarse trigger — used by event leave (and as a manual recompute hook). Cost is O(N²).
+     * Do NOT publish this on single-user changes; use {@link UserJoinedEvent} or
+     * {@link UserInterestsChanged} instead so we hit the O(N) incremental path.
+     */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void onParticipationChanged(MatchRecomputeRequested event) {
@@ -34,6 +40,19 @@ public class MatchingEventListener {
         }
     }
 
+    /** Single-user join → only recompute pairs (joining-user, *). O(N). */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async
+    public void onUserJoined(UserJoinedEvent event) {
+        try {
+            matching.recomputeForUser(event.eventId(), event.userId());
+        } catch (Exception e) {
+            log.warn("Incremental recompute failed for event {} user {}: {}",
+                event.eventId(), event.userId(), e.toString());
+        }
+    }
+
+    /** Interest edit → for each event the user is in, recompute pairs (user, *). O(N) per event. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
     public void onInterestsChanged(UserInterestsChanged event) {
@@ -41,9 +60,9 @@ public class MatchingEventListener {
             .map(p -> p.getEventId()).toList();
         for (var eventId : eventIds) {
             try {
-                matching.recompute(eventId);
+                matching.recomputeForUser(eventId, event.userId());
             } catch (Exception e) {
-                log.warn("Matching recompute failed for event {} (user {}): {}",
+                log.warn("Incremental recompute failed for event {} user {}: {}",
                     eventId, event.userId(), e.toString());
             }
         }

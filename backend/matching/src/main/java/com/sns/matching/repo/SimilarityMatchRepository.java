@@ -7,4 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SimilarityMatchRepository extends JpaRepository<SimilarityMatchEntity, UUID> {
     Optional<SimilarityMatchEntity> findByEventIdAndUserIdAAndUserIdB(UUID eventId, UUID userIdA, UUID userIdB);
+
+    /** Matches involving a specific user, used by the GDPR export aggregator. */
+    java.util.List<SimilarityMatchEntity> findByUserIdAOrUserIdB(UUID userIdA, UUID userIdB);
 }
