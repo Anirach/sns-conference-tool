@@ -8,6 +8,11 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (cfg) => {
+  // Don't attach bearer to auth endpoints. A stale JWT from a previous backend (different
+  // signing keypair after a restart, expired, etc.) makes the resource-server filter reject
+  // the request with 401 *before* the permitAll login controller runs — the user sees their
+  // valid credentials get refused for no apparent reason.
+  if (cfg.url && /^\/?auth\//.test(cfg.url)) return cfg;
   try {
     const jwt = await bridge.call<string | null>("storage.get", { key: "jwt" });
     if (jwt) {
