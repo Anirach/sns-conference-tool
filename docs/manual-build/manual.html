@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SNS Conference Tool — User Manual</title>
+<style>
+@page {
+  size: A4;
+  margin: 22mm 18mm 24mm 18mm;
+  @top-left   { content: "SNS Conference Tool"; font-family: 'Inter', sans-serif; font-size: 8pt; color: #6b6b6b; letter-spacing: 0.16em; text-transform: uppercase; }
+  @top-right  { content: "User Manual"; font-family: 'Inter', sans-serif; font-size: 8pt; color: #6b6b6b; letter-spacing: 0.16em; text-transform: uppercase; }
+  @bottom-center { content: counter(page) " / " counter(pages); font-family: 'Inter', sans-serif; font-size: 8pt; color: #999; }
+}
+@page :first {
+  margin: 0;
+  @top-left { content: ""; }
+  @top-right { content: ""; }
+  @bottom-center { content: ""; }
+}
+@page toc {
+  @top-left   { content: "SNS Conference Tool"; font-family: 'Inter', sans-serif; font-size: 8pt; color: #6b6b6b; letter-spacing: 0.16em; text-transform: uppercase; }
+  @top-right  { content: "Contents"; font-family: 'Inter', sans-serif; font-size: 8pt; color: #6b6b6b; letter-spacing: 0.16em; text-transform: uppercase; }
+}
+
+html { font-family: 'Source Serif 4', 'Source Serif Pro', Georgia, serif; }
+body { color: #1a2422; font-size: 10.5pt; line-height: 1.55; margin: 0; }
+
+/* Cover — one A4 page, no headers/footers */
+@page cover { size: A4; margin: 0; @top-left { content: ""; } @top-right { content: ""; } @bottom-center { content: ""; } }
+.cover {
+  page: cover;
+  page-break-after: always;
+  background: #faf6ee;
+  padding: 50mm 24mm;
+  box-sizing: border-box;
+}
+.cover .eyebrow { font-family: 'Inter', sans-serif; font-size: 10pt; letter-spacing: 0.32em; text-transform: uppercase; color: #b78b3f; margin: 0 0 6mm; }
+.cover h1 { font-family: 'Playfair Display', 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 42pt; line-height: 1.05; margin: 0 0 8mm; color: #16231f; page-break-before: avoid; }
+.cover h1 em { font-style: italic; }
+.cover .rule { width: 36mm; height: 0.6mm; background: #b78b3f; margin: 8mm 0; }
+.cover .lede { font-style: italic; font-size: 13pt; color: #4a5a55; max-width: 110mm; line-height: 1.45; margin: 0 0 80mm; }
+.cover .meta { font-family: 'Inter', sans-serif; font-size: 9pt; color: #6b6b6b; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1.7; }
+
+/* TOC */
+.toc { page: toc; page-break-after: always; }
+.toc h2 { font-family: 'Playfair Display', serif; font-style: italic; font-size: 28pt; margin-top: 4mm; }
+.toc ol { list-style: none; padding-left: 0; counter-reset: chapter; }
+.toc li { counter-increment: chapter; padding: 1.6mm 0; border-bottom: 0.3pt dotted #c4c4c4; display: flex; justify-content: space-between; font-family: 'Inter', sans-serif; font-size: 10pt; }
+.toc li:before { content: counter(chapter, decimal-leading-zero); color: #b78b3f; font-weight: 600; margin-right: 6mm; min-width: 8mm; }
+.toc li a { color: #1a2422; text-decoration: none; flex: 1; }
+.toc li::after { content: target-counter(attr(data-href), page); color: #999; }
+
+/* Body */
+h1 { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 28pt; line-height: 1.1; margin: 16mm 0 4mm; color: #16231f; page-break-before: always; page-break-after: avoid; }
+h1 .num { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11pt; letter-spacing: 0.3em; color: #b78b3f; display: block; margin-bottom: 3mm; }
+h1 em { font-style: italic; }
+h2 { font-family: 'Playfair Display', serif; font-weight: 600; font-size: 16pt; margin: 8mm 0 3mm; color: #16231f; page-break-after: avoid; }
+h3 { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 9pt; letter-spacing: 0.2em; text-transform: uppercase; color: #b78b3f; margin: 6mm 0 2mm; page-break-after: avoid; }
+p { margin: 0 0 3mm; }
+p.lede { font-style: italic; color: #4a5a55; font-size: 12pt; max-width: 130mm; }
+strong { font-weight: 600; color: #16231f; }
+code { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 9pt; background: #f1ede4; padding: 0.4mm 1mm; border-radius: 1mm; }
+hr { border: 0; border-top: 0.3pt solid #d4d0c5; margin: 6mm 0; }
+
+ul, ol { margin: 0 0 3mm 5mm; padding: 0; }
+li { margin-bottom: 1mm; }
+
+table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.5pt; page-break-inside: auto; }
+table th { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 8pt; letter-spacing: 0.18em; text-transform: uppercase; color: #6b6b6b; text-align: left; padding: 2mm 2mm 2mm 0; border-bottom: 0.5pt solid #c4c4c4; }
+table td { padding: 2mm 2mm 2mm 0; border-bottom: 0.3pt solid #e3ddd0; vertical-align: top; }
+table tr { page-break-inside: avoid; }
+
+/* Screenshot figures */
+figure { margin: 4mm 0 5mm; page-break-inside: avoid; text-align: center; }
+figure img { max-width: 70mm; max-height: 145mm; border: 0.3pt solid #d4d0c5; border-radius: 1mm; }
+figure figcaption { font-family: 'Inter', sans-serif; font-size: 8pt; color: #6b6b6b; margin-top: 2mm; letter-spacing: 0.06em; }
+figure.wide img { max-width: 90mm; }
+
+/* Two-column layout via table (weasyprint doesn't support display:grid) */
+.split { display: table; width: 100%; border-collapse: separate; border-spacing: 6mm 0; page-break-inside: avoid; margin: 3mm -6mm 5mm; }
+.split > div, .split > figure { display: table-cell; vertical-align: top; }
+.split > div { width: auto; }
+.split > figure { width: 78mm; margin: 0; text-align: center; }
+.split > figure img { max-width: 78mm; }
+
+/* Callouts */
+.callout { background: #f7f3e8; border-left: 1mm solid #b78b3f; padding: 3mm 4mm; margin: 4mm 0; font-size: 10pt; }
+.callout strong { color: #b78b3f; letter-spacing: 0.06em; text-transform: uppercase; font-size: 8pt; display: block; margin-bottom: 1mm; }
+
+/* Section divider */
+.divider { text-align: center; color: #b78b3f; letter-spacing: 0.4em; font-family: 'Inter', sans-serif; font-size: 9pt; margin: 8mm 0; }
+
+a { color: inherit; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<!-- ===== COVER ===== -->
+<section class="cover">
+  <div class="eyebrow">Vol. IV — Established MMXXIV</div>
+  <h1>The SNS<br/>Conference <em>Tool</em></h1>
+  <div class="rule"></div>
+  <div class="lede">A discreet register connecting researchers at conferences through curated affinities of inquiry.</div>
+  <div class="meta">User Manual<br/>For fellows &amp; the registry · MMXXVI</div>
+</section>
+
+<!-- ===== TOC ===== -->
+<section class="toc">
+  <h2><em>Contents</em></h2>
+  <ol>
+    <li data-href="#sec-1"><a href="#sec-1">Quick start</a></li>
+    <li data-href="#sec-2"><a href="#sec-2">Getting in</a></li>
+    <li data-href="#sec-3"><a href="#sec-3">The participant app</a></li>
+    <li data-href="#sec-4"><a href="#sec-4">Interests &amp; matching</a></li>
+    <li data-href="#sec-5"><a href="#sec-5">Privacy &amp; GDPR</a></li>
+    <li data-href="#sec-6"><a href="#sec-6">The Registry — admin console</a></li>
+    <li data-href="#sec-7"><a href="#sec-7">Demo accounts</a></li>
+    <li data-href="#sec-8"><a href="#sec-8">Troubleshooting</a></li>
+    <li data-href="#sec-9"><a href="#sec-9">Glossary</a></li>
+  </ol>
+</section>
+
+<!-- ===== 1. QUICK START ===== -->
+<section id="sec-1">
+<h1><span class="num">Section One</span>Quick <em>start</em></h1>
+<p class="lede">A two-minute introduction to the SNS Conference Tool — for the fellow who would rather try it than read about it.</p>
+
+<table>
+<thead><tr><th>You want to…</th><th>Do this</th></tr></thead>
+<tbody>
+<tr><td>Try the app right now</td><td>Open <code>http://localhost:3000</code> → <strong>A Returning Fellow</strong> → log in <code>you@example.com</code> / <code>Demo!2026</code></td></tr>
+<tr><td>Browse the conference floor</td><td>Tap <strong>Discover</strong> → tap <strong>Join</strong> on <em>NeurIPS 2026 Bangkok</em></td></tr>
+<tr><td>See who is nearby</td><td>Tap <strong>Fellows</strong> in the bottom bar → look at <em>Intellectual Affinities</em></td></tr>
+<tr><td>Send a message</td><td>Tap a fellow card → <strong>Begin correspondence</strong></td></tr>
+<tr><td>Manage events / users</td><td>(Admin only) tap <strong>Registry</strong> in the bottom bar</td></tr>
+</tbody>
+</table>
+
+<div class="callout"><strong>Demo dataset</strong>The app ships with twenty seeded fellows, three sessions, ~163 affinities, and nineteen chat messages — everything in this manual is reproducible without a real conference. See §7 for the seeded login choices.</div>
+
+</section>
+
+<!-- ===== 2. GETTING IN ===== -->
+<section id="sec-2">
+<h1><span class="num">Section Two</span>Getting <em>in</em></h1>
+<p class="lede">The app's front door is a single URL. From there, two paths lead to the rest of the system.</p>
+
+<div class="split">
+  <div>
+    <h3>The welcome screen</h3>
+    <p>Both pathways begin at the welcome page. <strong>Request Admission</strong> opens the registration funnel; <strong>A returning fellow</strong> goes straight to login.</p>
+    <p>The page sets the visual tone for everything that follows: serif headlines, brass capitals, a discreet hairline rule. This same chrome carries through every screen of the app.</p>
+  </div>
+  <figure><img src="manual-screenshots/01-welcome.png" alt="Welcome screen"/><figcaption>Figure 1 · Welcome</figcaption></figure>
+</div>
+
+<h2>2.1 First-time admission</h2>
+<div class="split">
+  <div>
+    <p>Tap <strong>Request Admission</strong> on the welcome screen, then enter your <strong>work email</strong>. We send a six-digit transaction number (TAN) to that address — <em>in dev mode the TAN is always <code>123456</code></em>.</p>
+    <p>After verifying the TAN, fill in your <strong>particulars</strong>: first name, last name, academic title (Prof. / Dr. / PhD candidate / etc.), institution, and a password (≥ 8 characters, must not equal your email's local part, and must not be one of the embedded common-password blocklist).</p>
+    <p>Tap <strong>Confirm Enrolment</strong>. You're now logged in and dropped on the <strong>Discover</strong> screen.</p>
+  </div>
+  <figure><img src="manual-screenshots/03-register.png" alt="Registration"/><figcaption>Figure 2 · Request Admission</figcaption></figure>
+</div>
+
+<h2>2.2 Returning fellow</h2>
+<div class="split">
+  <div>
+    <p>If you already have an account, tap <strong>A returning fellow</strong> on the welcome screen, enter your email + password, and tap <strong>Grant Admission</strong>.</p>
+    <p>Wrong password, unknown email, or a suspended account all return the same generic <em>"Admission refused"</em> message — this is intentional, so attackers cannot enumerate registered accounts.</p>
+  </div>
+  <figure><img src="manual-screenshots/02-login.png" alt="Login"/><figcaption>Figure 3 · Login</figcaption></figure>
+</div>
+
+<div class="callout"><strong>Forgot your password?</strong>v1 of the system does not ship a self-service password reset. Contact your event organiser; they can suspend / reinstate your account from the <strong>Registry</strong> (see §6.4).</div>
+
+</section>
+
+<!-- ===== 3. THE PARTICIPANT APP ===== -->
+<section id="sec-3">
+<h1><span class="num">Section Three</span>The participant <em>app</em></h1>
+<p class="lede">After login you land on the <strong>Discover</strong> screen — the conference home. Everything below describes the screens you can reach from there.</p>
+
+<h2>3.1 The bottom tab bar</h2>
+<p>A persistent tab bar lives at the bottom of every authenticated screen. Four tabs by default; admins see a fifth, <strong>Registry</strong>.</p>
+
+<table>
+<thead><tr><th>Tab</th><th>Where it goes</th><th>What lives there</th></tr></thead>
+<tbody>
+<tr><td><strong>Discover</strong></td><td><code>/events/join</code></td><td>Join a session by QR or code.</td></tr>
+<tr><td><strong>Fellows</strong></td><td><code>/matches</code></td><td>Your historical affinities (and the live vicinity per session).</td></tr>
+<tr><td><strong>Letters</strong></td><td><code>/chats</code></td><td>All your active chat threads.</td></tr>
+<tr><td><strong>Study</strong></td><td><code>/settings</code></td><td>Settings, profile, interests, sign-out.</td></tr>
+<tr><td><strong>Registry</strong> <em>(admins only)</em></td><td><code>/admin</code></td><td>The management console (see §6).</td></tr>
+</tbody>
+</table>
+
+<h2>3.2 Discover — joining a session</h2>
+<div class="split">
+  <div>
+    <p>A "session" is a conference event the organiser has set up (e.g. <em>NeurIPS 2026 Bangkok</em>).</p>
+    <p>You can join by <strong>scanning the QR cipher</strong> printed on your event badge, or by typing the cipher into the <em>Or transcribe</em> field, or by tapping <strong>Join</strong> on a known session in the <em>Demo Sessions</em> list below the scanner.</p>
+    <p>On join, you are added to the session roster with a default <strong>50 m</strong> visibility radius, and your GPS is requested (you may decline; vicinity will not work for that session). Once joined, the session becomes your <em>active session</em> — tapping <strong>Fellows</strong> now shows live nearby fellows.</p>
+  </div>
+  <figure><img src="manual-screenshots/10-discover.png" alt="Discover"/><figcaption>Figure 4 · Discover</figcaption></figure>
+</div>
+
+<h2>3.3 Fellows — your match register</h2>
+<div class="split">
+  <div>
+    <p>The <strong>Fellows</strong> tab is the heart of the app. It lists everyone in your active session ranked by <em>intellectual affinity</em> (cosine similarity of interest profiles) and, secondarily, by physical proximity.</p>
+    <p>Use the <strong>radius selector</strong> (20 m / 50 m / 100 m) to control how far the vicinity query reaches. Use the <strong>By Affinity</strong> dropdown to switch between sort orders (Affinity / Proximity / Recency). Use the <strong>Mutual / All</strong> chips to hide one-way matches.</p>
+    <p>Each card shows a portrait, academic title, name, institution, the keywords you share with that fellow, the distance between you, and an <strong>INDEX</strong> percentage representing the cosine score.</p>
+    <p>Tap any card to open the <em>Match Dossier</em> with the full keyword overlap and a <strong>Begin correspondence</strong> button.</p>
+  </div>
+  <figure><img src="manual-screenshots/11-fellows-live.png" alt="Fellows"/><figcaption>Figure 5 · Fellows (live vicinity)</figcaption></figure>
+</div>
+
+<h2>3.4 Letters — chat correspondence</h2>
+<div class="split">
+  <div>
+    <p>The <strong>Letters</strong> tab lists every chat thread you have, most recent first. Each row shows the other fellow's portrait, name, institution, the last message preview (prefixed with <em>You:</em> if you sent it), the time delta, and an unread badge when you have messages addressed to you that you haven't read yet.</p>
+    <p>Open a thread to see the full message history. Type your reply in the bottom composer and press Enter. Messages are delivered in real time over a STOMP websocket — the other party sees them appear without refreshing.</p>
+    <p>If you have granted notification permission on a mobile device, you'll get an OS notification when a new message arrives while the app is in the background.</p>
+  </div>
+  <figure><img src="manual-screenshots/12-letters.png" alt="Letters"/><figcaption>Figure 6 · Letters</figcaption></figure>
+</div>
+
+<h2>3.5 Study — settings, profile, interests</h2>
+<div class="split">
+  <div>
+    <p>Tap <strong>Study</strong> in the bottom tab to reach the settings page.</p>
+    <ul>
+      <li><strong>Profile</strong> — edit name, academic title, institution, profile portrait.</li>
+      <li><strong>Interests</strong> — add / remove the interests that drive matching (see §4).</li>
+      <li><strong>SNS Links</strong> — optionally connect Facebook or LinkedIn so the system can enrich your profile automatically.</li>
+      <li><strong>Push notifications</strong>, <strong>GPS consent</strong>, <strong>Local storage</strong>, <strong>Language</strong> — toggle on / off.</li>
+      <li><strong>Sign out</strong> — clears your session.</li>
+      <li><strong>Export my data</strong> — downloads a ZIP of every record we have about you (§5).</li>
+      <li><strong>Delete my account</strong> — schedules permanent deletion in 30 days (§5).</li>
+    </ul>
+  </div>
+  <figure><img src="manual-screenshots/15-settings.png" alt="Settings"/><figcaption>Figure 7 · Study (settings)</figcaption></figure>
+</div>
+
+<div class="split">
+  <figure><img src="manual-screenshots/13-profile.png" alt="Profile"/><figcaption>Figure 8 · Profile</figcaption></figure>
+  <figure><img src="manual-screenshots/14-interests.png" alt="Interests"/><figcaption>Figure 9 · Interests</figcaption></figure>
+</div>
+
+</section>
+
+<!-- ===== 4. INTERESTS ===== -->
+<section id="sec-4">
+<h1><span class="num">Section Four</span>Interests &amp; <em>matching</em></h1>
+<p class="lede">Matching is a cosine similarity between your keyword vector and every other fellow's, scoped to the session you're in. To produce useful matches, the system needs to know what you work on.</p>
+
+<h2>4.1 Three input modes</h2>
+<ol>
+  <li><strong>Free text.</strong> Type a sentence or paragraph (e.g. <em>"I work on graph neural networks for drug-target interaction prediction, focusing on heterogeneous graphs and explainability."</em>). The keyword extractor pulls out the concept-bearing terms and weights them.</li>
+  <li><strong>Article link.</strong> Paste a URL (e.g. an arXiv abstract). The system stores the link and the descriptive text you provide alongside it.</li>
+  <li><strong>Article upload.</strong> Upload a PDF or plain-text article. The text is extracted and run through the same keyword pipeline.</li>
+</ol>
+
+<h2>4.2 Practical advice</h2>
+<ul>
+  <li><strong>Quality over quantity.</strong> Two or three rich, specific paragraphs produce better matches than a long list of single keywords.</li>
+  <li><strong>Use natural language.</strong> "Federated learning, privacy, distributed training" works, but "<em>Federated learning for medical imaging with strict privacy guarantees over hospital networks</em>" is much better — the extractor uses bigram phrases too.</li>
+  <li><strong>Edit anytime.</strong> Removing or adding interests triggers an automatic re-computation of your matches for every session you've joined.</li>
+</ul>
+
+<div class="callout"><strong>Inspect your keywords</strong>Open the <strong>Interests</strong> screen — each interest card lists the keywords it contributed to your vector. Useful for debugging when you wonder why two researchers don't appear as similar as you'd expect.</div>
+
+</section>
+
+<!-- ===== 5. PRIVACY ===== -->
+<section id="sec-5">
+<h1><span class="num">Section Five</span>Privacy &amp; <em>GDPR</em></h1>
+<p class="lede">The system is built for compliance from the database upward — your data is yours.</p>
+
+<h2>5.1 What we store, and how</h2>
+<ul>
+  <li><strong>Locations</strong> are only stored as long as a session is active and only at coarse precision (~1 m).</li>
+  <li><strong>IP addresses</strong> are SHA-256-hashed with a per-deployment salt before being written to the audit log — raw IPs never persist.</li>
+  <li>The <strong>audit log</strong> is append-only, enforced by a Postgres trigger, and pruned automatically after 180 days.</li>
+  <li><strong>Encrypted SNS tokens</strong> are AES-256-GCM at rest; if you unlink the account, the tokens are zeroed.</li>
+</ul>
+
+<h2>5.2 Your rights</h2>
+<table>
+<thead><tr><th>Action</th><th>Where</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><strong>Export everything</strong></td><td>Study → Export my data</td><td>Streams a ZIP: <code>profile.json</code>, <code>interests.json</code>, <code>matches.json</code>, <code>chat-threads.json</code>, <code>chat-messages.json</code>, <code>sns-links.json</code>, <code>manifest.json</code>.</td></tr>
+<tr><td><strong>Soft delete</strong></td><td>Study → Delete my account</td><td>Sets <code>deleted_at = now()</code>. You're immediately logged out and can no longer log in.</td></tr>
+<tr><td><strong>Hard delete</strong></td><td><em>(automatic, after 30 days)</em></td><td>A scheduled cron permanently removes every row tied to your <code>user_id</code>; cascades wipe profile, interests, participations, matches, chat, devices, refresh tokens, SNS links.</td></tr>
+</tbody>
+</table>
+<p>You can also ask an admin to suspend or hard-delete you immediately — see §6.4.</p>
+
+</section>
+
+<!-- ===== 6. ADMIN ===== -->
+<section id="sec-6">
+<h1><span class="num">Section Six</span>The Registry — <em>admin</em></h1>
+<p class="lede">For event organisers, support staff, and operations. Only users with role <code>ADMIN</code> or <code>SUPER_ADMIN</code> can reach the management console.</p>
+
+<div class="split">
+  <div>
+    <h3>The same chrome, the same shell</h3>
+    <p>The console <strong>shares the participant app's chrome</strong> — same cream theme, same top app bar, same bottom tab bar. The only structural difference is a horizontal <em>section nav</em> of pills below each page header for jumping between admin sub-sections.</p>
+    <p>The bottom tab bar grows from four tabs to five when your role is <code>ADMIN</code> or <code>SUPER_ADMIN</code>; the new <strong>Registry</strong> tab is the canonical entry. Admins still land on the participant home (<code>/events/join</code>) on login like everyone else.</p>
+  </div>
+  <figure><img src="manual-screenshots/40-admin-on-participant-home.png" alt="Admin Discover"/><figcaption>Figure 10 · Discover, with the Registry tab visible</figcaption></figure>
+</div>
+
+<h2>6.1 Becoming an admin</h2>
+<ol>
+  <li><strong>You are the seeded demo super-admin.</strong> <code>you@example.com</code> ships as <code>SUPER_ADMIN</code> on a fresh seed; <code>lukas.svensson@kth.se</code> and <code>rajesh.iyer@stanford.edu</code> ship as <code>ADMIN</code>.</li>
+  <li><strong>An operator promoted you.</strong> Any existing <code>SUPER_ADMIN</code> can change your role on the Fellows admin screen (§6.4).</li>
+  <li><strong>You are the bootstrap admin.</strong> Setting the env var <code>SNS_ADMIN_EMAIL=you@whatever.com</code> and rebooting the backend automatically promotes that account to <code>SUPER_ADMIN</code> on every boot. (In production, <code>ProductionSecretsCheck</code> refuses to start without it.)</li>
+</ol>
+
+<h2>6.2 Overview</h2>
+<div class="split">
+  <div>
+    <p>The first stop in the Registry. A tile-grid dashboard, refreshes every 30 seconds.</p>
+    <ul>
+      <li><strong>Fellows</strong>: total · active · suspended · deleted (24 h)</li>
+      <li><strong>Sessions</strong>: active · expired · affinities · new (24 h)</li>
+      <li><strong>Apparatus</strong>: outbox pending · outbox failed · delivered (24 h) · audit (24 h)</li>
+    </ul>
+    <p>Tiles turn <strong>amber</strong> when the value enters a warning band (e.g. &gt; 50 outbox pending) and <strong>red</strong> when there's an actual failure (e.g. any outbox FAILED).</p>
+  </div>
+  <figure><img src="manual-screenshots/30-admin-overview.png" alt="Admin Overview"/><figcaption>Figure 11 · Registry · Overview</figcaption></figure>
+</div>
+
+<h2>6.3 Sessions</h2>
+<div class="split">
+  <div>
+    <p>The conference-organiser surface. The list view is a paged table of every session — name, venue, cipher, status, and fellow count — with a search box across name / venue / cipher and a <strong>+ New</strong> button to create.</p>
+    <p>Tap a row for the session detail.</p>
+  </div>
+  <figure><img src="manual-screenshots/31-admin-sessions.png" alt="Sessions list"/><figcaption>Figure 12 · Sessions</figcaption></figure>
+</div>
+
+<div class="split">
+  <div>
+    <h3>Create new session</h3>
+    <p>Use the <strong>+ New</strong> button on the Sessions list. Enter a <strong>name</strong>, <strong>venue</strong>, <strong>cipher</strong> (the QR plaintext, e.g. <code>NEURIPS2027</code>), and an <strong>adjournment time</strong>. Optionally provide a <strong>centroid lat/lon</strong> to centre the heatmap on a fixed point.</p>
+    <p>Tapping <strong>Create session</strong> redirects you to the session detail with the new cipher ready to print on badges.</p>
+  </div>
+  <figure><img src="manual-screenshots/33-admin-session-new.png" alt="Create session"/><figcaption>Figure 13 · New session</figcaption></figure>
+</div>
+
+<div class="split">
+  <div>
+    <h3>Session detail</h3>
+    <p>Header shows name + venue + cipher. Stat tiles count fellows in residence, affinities, correspondence (chat messages), and overall status.</p>
+    <p>The <strong>venue heatmap</strong> is an inline SVG with concentric 10/25/50 m rings centred on the venue, with each fellow's last known position dotted. Useful for spotting clusters or stragglers in real time.</p>
+    <p>Below the heatmap is the <strong>Fellows present</strong> table — name + institution + last GPS fix time + selected radius. Tap a row to jump to that fellow's dossier.</p>
+    <p>The <strong>Adjourn permanently</strong> button at the bottom hard-deletes the event after a confirmation tap; the deletion cascades to participations, matches, and chat messages. <em>It cannot be undone.</em></p>
+  </div>
+  <figure><img src="manual-screenshots/32-admin-session-detail.png" alt="Session detail"/><figcaption>Figure 14 · Session detail</figcaption></figure>
+</div>
+
+<h2>6.4 Fellows</h2>
+<div class="split">
+  <div>
+    <p>The user-admin surface. Paged list of every user with email + name + institution + role + status, plus a search box and two filter selectors: by role (USER / ORGANIZER / ADMIN / SUPER_ADMIN) and status (active / suspended / deleted).</p>
+    <p>Tap a row to open the dossier.</p>
+  </div>
+  <figure><img src="manual-screenshots/34-admin-fellows.png" alt="Fellows list"/><figcaption>Figure 15 · Fellows</figcaption></figure>
+</div>
+
+<div class="split">
+  <div>
+    <h3>Fellow dossier</h3>
+    <p>Header shows portrait, full name, email, academic title, institution. Six stat tiles count: status, role, interests, affinities, messages, sessions.</p>
+    <p><strong>Role chips</strong> let you change role with a single tap; greyed if it's already the current role. <em>SUPER_ADMIN-only</em>; refused if it would demote the last super-admin.</p>
+    <p>Below: lists of <strong>interests</strong> (with extracted keywords), <strong>sessions joined</strong> (with selected radius and join date), and the latest 50 <strong>ledger entries</strong> where this fellow was the actor.</p>
+    <p>Action buttons at the bottom: <strong>Suspend / Reinstate</strong>, <strong>Soft delete</strong>, <strong>Hard delete</strong>. Hard delete is two-tap (first tap shows <em>Confirm hard delete</em>) and SUPER_ADMIN-only.</p>
+  </div>
+  <figure><img src="manual-screenshots/35-admin-fellow-dossier.png" alt="Fellow dossier"/><figcaption>Figure 16 · Fellow dossier</figcaption></figure>
+</div>
+
+<h2>6.5 Ledger</h2>
+<div class="split">
+  <div>
+    <p>Read-only search over the immutable <code>audit_log</code> table (a Postgres trigger blocks UPDATE / DELETE outside the prune job).</p>
+    <p>Three optional filters: an <strong>actor user id</strong> (paste a UUID from a fellow dossier), an <strong>action code</strong> (e.g. <code>auth.login.failure</code>, <code>admin.user.suspended</code>), and a <strong>since</strong> datetime lower bound. The list pages 50 rows at a time.</p>
+    <p>The <em>24-hour total</em> appears as a tile on the Overview and Apparatus screens.</p>
+  </div>
+  <figure><img src="manual-screenshots/36-admin-ledger.png" alt="Ledger"/><figcaption>Figure 17 · Ledger</figcaption></figure>
+</div>
+
+<h3>Common audit actions</h3>
+<table>
+<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>auth.register</code> / <code>auth.verify</code> / <code>auth.complete</code></td><td>Registration funnel</td></tr>
+<tr><td><code>auth.login</code> / <code>auth.login.failure</code> / <code>auth.login.suspended</code> / <code>auth.login.unverified</code></td><td>Login outcomes</td></tr>
+<tr><td><code>auth.refresh</code> / <code>auth.refresh.reuse_detected</code></td><td>Refresh-token rotation; reuse_detected = potential token theft</td></tr>
+<tr><td><code>auth.logout</code></td><td>Clean logout</td></tr>
+<tr><td><code>profile.update</code> / <code>profile.soft_delete</code> / <code>profile.hard_delete</code></td><td>Profile lifecycle</td></tr>
+<tr><td><code>sns.link</code> / <code>sns.callback</code> / <code>sns.unlink</code> / <code>sns.enrich</code></td><td>SNS pipeline</td></tr>
+<tr><td><code>export.download</code></td><td>GDPR export pulled</td></tr>
+<tr><td><code>admin.event.created</code> / <code>admin.event.updated</code> / <code>admin.event.deleted</code></td><td>Event admin</td></tr>
+<tr><td><code>admin.user.suspended</code> / <code>admin.user.unsuspended</code> / <code>admin.user.role_changed</code> / <code>admin.user.soft_deleted</code> / <code>admin.user.hard_deleted</code></td><td>User admin</td></tr>
+<tr><td><code>admin.outbox.retry</code></td><td>Manual outbox retry</td></tr>
+</tbody>
+</table>
+
+<h2>6.6 Apparatus</h2>
+<div class="split">
+  <div>
+    <p>The push pipeline + system-health surface. Top tiles repeat the Apparatus row from Overview: <strong>outbox pending</strong>, <strong>outbox failed</strong>, <strong>delivered (24 h)</strong>, and <strong>audit (24 h)</strong>.</p>
+    <p>Filter chips above the table: <strong>all · PENDING · FAILED · DELIVERED</strong>. The table shows kind + status + attempt count, with a <strong>Retry</strong> link on FAILED rows that flips them back to PENDING for the next scheduled drain.</p>
+    <p>The refresh icon in the header forces an immediate reload of both metrics and the outbox table.</p>
+  </div>
+  <figure><img src="manual-screenshots/37-admin-apparatus.png" alt="Apparatus"/><figcaption>Figure 18 · Apparatus</figcaption></figure>
+</div>
+
+</section>
+
+<!-- ===== 7. DEMO ACCOUNTS ===== -->
+<section id="sec-7">
+<h1><span class="num">Section Seven</span>Demo <em>accounts</em></h1>
+<p class="lede">The seeded development dataset gives you twenty ready-made fellows and three sessions to experiment with. Every account uses the same password.</p>
+
+<table>
+<thead><tr><th>Email</th><th>Role</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>you@example.com</code></td><td>SUPER_ADMIN</td><td>Alex Chen, ETH Zurich. Already joined NeurIPS + ACL with interests + chat history.</td></tr>
+<tr><td><code>lukas.svensson@kth.se</code></td><td>ADMIN</td><td>Lukas Svensson, KTH Stockholm.</td></tr>
+<tr><td><code>rajesh.iyer@stanford.edu</code></td><td>ADMIN</td><td>Rajesh Iyer, Stanford University.</td></tr>
+<tr><td><code>alice.smith@mit.edu</code></td><td>USER</td><td>Alice Smith, MIT. Use this to test what a regular fellow sees.</td></tr>
+<tr><td><em>(any of the other 16 seeded fellows)</em></td><td>USER</td><td>All seeded with the same password.</td></tr>
+</tbody>
+</table>
+
+<p><strong>Password for all accounts:</strong> <code>Demo!2026</code></p>
+
+<div class="callout"><strong>Re-seeding</strong>The seeder runs once on a fresh DB volume and short-circuits on subsequent boots when <code>you@example.com</code> already exists. To re-seed, wipe the volume:<br/><br/><code>docker compose -f infra/docker-compose.dev.yml --profile backend --profile web down -v</code><br/><code>docker compose -f infra/docker-compose.dev.yml --profile backend --profile web up -d --build</code></div>
+
+</section>
+
+<!-- ===== 8. TROUBLESHOOTING ===== -->
+<section id="sec-8">
+<h1><span class="num">Section Eight</span>Trouble<em>shooting</em></h1>
+
+<h3>"Admission refused" with the right password</h3>
+<p>Almost always one of:</p>
+<ol>
+  <li><strong>The backend was restarted</strong> and it rotated its ephemeral JWT keypair (dev only — prod uses persistent keys). The frontend tries to refresh with the stale token and gets 400. <strong>Fix:</strong> clear browser localStorage (DevTools → Application → Storage → Clear site data) and log in again.</li>
+  <li><strong>You hit the rate limit</strong> — login allows 30 attempts per IP per hour and 10 per email per hour. <strong>Fix:</strong> wait, or restart the backend (<code>docker restart sns-backend</code>) to drop the in-memory limiter.</li>
+  <li><strong>Your account was suspended.</strong> A super-admin needs to reinstate you in Registry → Fellows.</li>
+</ol>
+
+<h3>Fellows page is blank after joining</h3>
+<ul>
+  <li><strong>Wait 30 seconds.</strong> Matching recomputes asynchronously after you join; vicinity refreshes every 30 seconds.</li>
+  <li><strong>Widen the radius</strong> to 100 m.</li>
+  <li><strong>Add interests.</strong> Without interests you have no keyword vector — no peer can have a non-zero similarity with you.</li>
+  <li><strong>Check your GPS.</strong> Without a recent location fix (within 5 minutes) the vicinity query won't include you. Check Study → GPS consent is on.</li>
+</ul>
+
+<h3>Chat messages don't arrive in real time</h3>
+<ul>
+  <li>The websocket auth needs your JWT — sign out and back in if your session is stale.</li>
+  <li>Page reload often kicks the STOMP client back into a working state.</li>
+  <li>The Letters thread list refreshes every 15 seconds even without WS, so you'll see new messages on a refresh.</li>
+</ul>
+
+</section>
+
+<!-- ===== 9. GLOSSARY ===== -->
+<section id="sec-9">
+<h1><span class="num">Section Nine</span>Glossary</h1>
+<table>
+<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><strong>Admission</strong></td><td>The login screen ("A Returning Fellow").</td></tr>
+<tr><td><strong>Adjourn</strong></td><td>Either <em>let a session expire</em> (passive) or <em>delete a session</em> (admin action).</td></tr>
+<tr><td><strong>Affinity</strong></td><td>The cosine-similarity score between two fellows' interest vectors.</td></tr>
+<tr><td><strong>Apparatus</strong></td><td>The admin ops dashboard (push outbox + system health).</td></tr>
+<tr><td><strong>Cipher</strong></td><td>The plaintext QR code that joins a session (e.g. <code>NEURIPS2026</code>).</td></tr>
+<tr><td><strong>Correspondence</strong></td><td>A chat thread between two fellows in the same session.</td></tr>
+<tr><td><strong>Discover</strong></td><td>The participant home screen — list of joinable sessions.</td></tr>
+<tr><td><strong>Dossier</strong></td><td>The detailed view of a single fellow on the admin Fellows screen.</td></tr>
+<tr><td><strong>Fellow</strong></td><td>Any registered user.</td></tr>
+<tr><td><strong>Index</strong></td><td>A fellow's affinity score expressed as a 0–100% percentage.</td></tr>
+<tr><td><strong>In residence</strong></td><td>The session's status while it's active (not adjourned).</td></tr>
+<tr><td><strong>Ledger</strong></td><td>The admin audit-log explorer.</td></tr>
+<tr><td><strong>Letters</strong></td><td>The participant chat inbox tab.</td></tr>
+<tr><td><strong>Particulars</strong></td><td>Your profile data (name, title, institution, portrait).</td></tr>
+<tr><td><strong>Registry</strong></td><td>The admin console as a whole; also the bottom tab that opens it.</td></tr>
+<tr><td><strong>Session</strong></td><td>A single conference event (NeurIPS Bangkok, ACL Vienna, …).</td></tr>
+<tr><td><strong>Study</strong></td><td>The participant settings tab.</td></tr>
+<tr><td><strong>TAN</strong></td><td>The six-digit transaction number used to verify your email at registration.</td></tr>
+<tr><td><strong>Vicinity</strong></td><td>The set of fellows currently within your selected radius (20 / 50 / 100 m).</td></tr>
+</tbody>
+</table>
+
+<div class="divider">· · ·</div>
+<p style="text-align:center; color:#6b6b6b; font-size:9pt; font-style:italic;">End of manual · Vol. IV, Issue I · MMXXVI</p>
+
+</section>
+
+</body>
+</html>
