@@ -88,6 +88,10 @@ sns:
   audit:
     retention-days: 180
     prune-cron: "0 30 3 * * *"
+  admin:
+    # If set and the user with this email exists, AdminBootstrap promotes them to SUPER_ADMIN
+    # on every boot (idempotent). ProductionSecretsCheck refuses to start in prod when unset.
+    bootstrap-email: ${SNS_ADMIN_EMAIL:}
   dev:
     # When true, on boot DevSeedRunner inserts the 3 demo events the MSW mocks ship
     # (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired). Idempotent.

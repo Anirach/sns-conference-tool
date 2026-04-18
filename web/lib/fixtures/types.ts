@@ -1,5 +1,7 @@
 export type UUID = string;
 
+export type Role = "USER" | "ORGANIZER" | "ADMIN" | "SUPER_ADMIN";
+
 export interface User {
   userId: UUID;
   email: string;
@@ -8,6 +10,7 @@ export interface User {
   academicTitle: string | null;
   institution: string | null;
   profilePictureUrl: string | null;
+  role?: Role;
 }
 
 export type InterestType = "TEXT" | "ARTICLE_LOCAL" | "ARTICLE_LINK";

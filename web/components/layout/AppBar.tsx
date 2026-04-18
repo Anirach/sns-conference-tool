@@ -1,8 +1,10 @@
 "use client";
 
 import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReactNode } from "react";
+import { useIsAdmin } from "@/lib/state/authStore";
 
 interface AppBarProps {
   title: string;
@@ -14,6 +16,7 @@ interface AppBarProps {
 
 export function AppBar({ title, eyebrow, showBack, trailing, onBack }: AppBarProps) {
   const router = useRouter();
+  const isAdmin = useIsAdmin();
   return (
     <header className="sticky top-0 z-30 bg-background/90 backdrop-blur hairline-b">
       <div className="flex h-14 items-center justify-between gap-2 px-5">
@@ -33,7 +36,17 @@ export function AppBar({ title, eyebrow, showBack, trailing, onBack }: AppBarPro
             <h1 className="truncate font-serif text-lg leading-none text-foreground">{title}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-1">{trailing}</div>
+        <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Link
+              href="/admin"
+              className="eyebrow rounded-full border border-brass-500/40 bg-brass-500/10 px-2.5 py-1 text-[10px] text-brass-700 hover:bg-brass-500/20"
+            >
+              Registry
+            </Link>
+          ) : null}
+          {trailing}
+        </div>
       </div>
     </header>
   );

@@ -115,6 +115,12 @@ public class AuthService {
             audit.log("auth.login.unverified", user.getUserId());
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email not verified");
         }
+        if (user.getSuspendedAt() != null) {
+            // Same generic 401 as bad-password — admins suspending accounts shouldn't leak the
+            // existence/state of the user. Audit row distinguishes the actual cause.
+            audit.log("auth.login.suspended", user.getUserId());
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
         audit.log("auth.login", user.getUserId());
         return issueTokens(user.getUserId());
     }

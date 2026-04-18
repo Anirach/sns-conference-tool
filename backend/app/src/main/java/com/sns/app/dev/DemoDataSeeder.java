@@ -7,6 +7,7 @@ import com.sns.event.domain.EventEntity;
 import com.sns.event.domain.ParticipationEntity;
 import com.sns.event.repo.EventRepository;
 import com.sns.event.repo.ParticipationRepository;
+import com.sns.identity.domain.Role;
 import com.sns.identity.domain.UserEntity;
 import com.sns.identity.repo.UserRepository;
 import com.sns.interest.app.KeywordExtractor;
@@ -300,6 +301,7 @@ public class DemoDataSeeder {
                     ue.setEmail(u.email());
                     ue.setEmailVerified(true);
                     ue.setPasswordHash(seedHash);
+                    ue.setRole(roleFor(u.mockId()));
                     users.save(ue);
 
                     ProfileEntity pe = new ProfileEntity();
@@ -422,6 +424,18 @@ public class DemoDataSeeder {
         Point p = GEO.createPoint(new Coordinate(centerLon + dLon, centerLat + dLat));
         p.setSRID(4326);
         return p;
+    }
+
+    /**
+     * Hands out demo roles so the admin user-list has something to filter on out of the box.
+     * Alex Chen (the demo login) becomes SUPER_ADMIN; two senior fellows become ADMIN.
+     */
+    private static Role roleFor(String mockId) {
+        return switch (mockId) {
+            case "u-you-0001" -> Role.SUPER_ADMIN;
+            case "u-0013", "u-0017" -> Role.ADMIN;
+            default -> Role.USER;
+        };
     }
 
     private static UUID seedUuid(String key) {

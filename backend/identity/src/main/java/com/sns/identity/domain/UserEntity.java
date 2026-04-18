@@ -30,12 +30,20 @@ public class UserEntity {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
+    private Role role = Role.USER;
+
+    @Column(name = "suspended_at")
+    private OffsetDateTime suspendedAt;
+
     @PrePersist
     void prePersist() {
         if (userId == null) userId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
+        if (role == null) role = Role.USER;
     }
 
     @PreUpdate
@@ -55,4 +63,8 @@ public class UserEntity {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public OffsetDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(OffsetDateTime deletedAt) { this.deletedAt = deletedAt; }
+    public Role getRole() { return role; }
+    public void setRole(Role role) { this.role = role; }
+    public OffsetDateTime getSuspendedAt() { return suspendedAt; }
+    public void setSuspendedAt(OffsetDateTime suspendedAt) { this.suspendedAt = suspendedAt; }
 }

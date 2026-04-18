@@ -96,8 +96,9 @@ Default endpoints:
 Dev-mode overrides:
 - `sns.verification.dev-mode=true` (default): TAN is always `123456`; real SMTP send still attempted.
 - `sns.dev.seed-events=true` (default): three demo events (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired) are seeded at boot.
-- `sns.dev.seed-demo-data=true` (default off; on in `infra/docker-compose.dev.yml`): on the first fresh boot also seeds 20 fixture users, profiles with `/avatars/*` portraits, NeurIPS+ACL participations with PostGIS positions clustered around each venue, real interests with `KeywordExtractor`-derived vectors, recomputed similarity matches, and 19 chat messages mirroring `web/lib/fixtures/chats.ts`. Idempotent via the sentinel `you@example.com`. Login: `you@example.com` / `Demo!2026`. Refused under the `prod` profile by `ProductionSecretsCheck`.
+- `sns.dev.seed-demo-data=true` (default off; on in `infra/docker-compose.dev.yml`): on the first fresh boot also seeds 20 fixture users, profiles with `/avatars/*` portraits, NeurIPS+ACL participations with PostGIS positions clustered around each venue, real interests with `KeywordExtractor`-derived vectors, recomputed similarity matches, 19 chat messages mirroring `web/lib/fixtures/chats.ts`, and promotes Alex Chen to `SUPER_ADMIN` (Lukas Svensson + Rajesh Iyer get `ADMIN`). Idempotent via the sentinel `you@example.com`. Login: `you@example.com` / `Demo!2026`. Refused under the `prod` profile by `ProductionSecretsCheck`.
 - The same flag activates `DemoDataKeepalive` — a `@Scheduled(fixedDelay=60s)` job that refreshes any `participations.last_update` older than 4 minutes back to `now()` and clears the `vicinity` cache, so the seeded fellows stay inside `VicinityService`'s 5-minute freshness filter indefinitely (the Fellows screen never goes blank).
+- `SNS_ADMIN_EMAIL` (`sns.admin.bootstrap-email`): when set, `AdminBootstrap` promotes the matching user to `SUPER_ADMIN` on every boot (idempotent). `ProductionSecretsCheck` refuses to start under `prod` when unset.
 
 ## End-to-end smoke (curl)
 
@@ -189,6 +190,7 @@ Container env (set in compose, override via `.env`):
 | `sns.verification.dev-mode` | `true` | TAN is `123456`; set false in prod |
 | `sns.dev.seed-events` | `true` | Seed the three demo events; set false in prod |
 | `sns.dev.seed-demo-data` | `false` | Seed 20 fixture users + interests + matches + chats — login `you@example.com` / `Demo!2026`. Refused in `prod`. |
+| `sns.admin.bootstrap-email` (`SNS_ADMIN_EMAIL`) | unset | Email to promote to `SUPER_ADMIN` at boot. Required in `prod`. |
 | `sns.matching.sweep-interval-ms` | `180000` | Scheduled recompute cadence |
 | `sns.push.drain-interval-ms` | `5000` | Outbox drain cadence |
 | `sns.push.fcm.credentials-json` | unset | Firebase service-account JSON; when set, registers `FcmPushGateway` |

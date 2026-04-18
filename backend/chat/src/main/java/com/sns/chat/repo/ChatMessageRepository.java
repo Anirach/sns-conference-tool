@@ -16,6 +16,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
     /** All messages where the user is sender or recipient — used by the GDPR export aggregator. */
     List<ChatMessageEntity> findByFromUserIdOrToUserIdOrderByCreatedAtAsc(UUID fromUserId, UUID toUserId);
 
+    long countByEventId(UUID eventId);
+
+    long countByFromUserIdOrToUserId(UUID fromUserId, UUID toUserId);
+
     @Query("""
         SELECT m FROM ChatMessageEntity m
         WHERE m.eventId = :eventId

@@ -107,6 +107,9 @@ services:
       # extracted keywords, recomputed similarity matches, 18 chat messages. Login as
       # you@example.com / Demo!2026. Set to "false" to start with an empty DB.
       SNS_DEV_SEED_DEMO_DATA: "true"
+      # Promotes you@example.com to SUPER_ADMIN at boot so the /admin console is reachable
+      # without manual SQL. Idempotent. ProductionSecretsCheck refuses prod boots without it.
+      SNS_ADMIN_EMAIL: "you@example.com"
     ports:
       - "8080:8080"
 

@@ -24,4 +24,19 @@ public interface EventRepository extends JpaRepository<EventEntity, UUID> {
         )
         """)
     List<EventEntity> findJoinedByUserId(@Param("userId") UUID userId);
+
+    /** Substring search over name / venue / qr plaintext for the admin event list. */
+    @Query("""
+        SELECT e FROM EventEntity e
+        WHERE LOWER(e.eventName) LIKE :q
+           OR LOWER(e.venue) LIKE :q
+           OR LOWER(e.qrCodePlaintext) LIKE :q
+        """)
+    org.springframework.data.domain.Page<EventEntity> findByQuery(
+        @Param("q") String q,
+        org.springframework.data.domain.Pageable pageable
+    );
+
+    long countByExpirationCodeAfter(java.time.OffsetDateTime cutoff);
+    long countByExpirationCodeBefore(java.time.OffsetDateTime cutoff);
 }

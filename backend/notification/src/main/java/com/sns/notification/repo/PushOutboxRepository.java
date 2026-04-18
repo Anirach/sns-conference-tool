@@ -14,6 +14,17 @@ public interface PushOutboxRepository extends JpaRepository<PushOutboxEntity, UU
 
     List<PushOutboxEntity> findByStatus(Status status, Pageable pageable);
 
+    /** Paged + sorted (most recent first) for the admin ops dashboard. */
+    org.springframework.data.domain.Page<PushOutboxEntity> findByStatusOrderByCreatedAtDesc(
+        Status status, Pageable pageable);
+
+    /** All-statuses paged variant when the admin filter is not selected. */
+    org.springframework.data.domain.Page<PushOutboxEntity> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    long countByStatus(Status status);
+
+    long countByStatusAndDeliveredAtAfter(Status status, java.time.OffsetDateTime cutoff);
+
     /**
      * Selects up to {@code batch} PENDING outbox IDs with {@code FOR UPDATE SKIP LOCKED}, the
      * standard Postgres work-queue pattern. Must be called inside a @Transactional block so the

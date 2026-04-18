@@ -263,6 +263,20 @@ password: Demo!2026
 
 A companion `DemoDataKeepalive` (also gated on `sns.dev.seed-demo-data`) bumps `participations.last_update` once a minute so the seeded fellows stay inside `VicinityService`'s 5-minute freshness window indefinitely — the Fellows page never goes blank in dev.
 
+### Management console (`/admin`)
+
+Alex Chen is also seeded as `SUPER_ADMIN` (Lukas Svensson and Rajesh Iyer get `ADMIN`). Once logged in, a small **Registry** pill appears in the top-right of the participant app — click it (or browse to http://localhost:3000/admin) to enter the admin console.
+
+| Section | What it does |
+|---------|--------------|
+| **Overview** | Tile-grid: total / active / suspended fellows, active vs. expired sessions, push outbox queue, audit-events-in-last-24h. Refreshes every 30 s. |
+| **Sessions** | List + create / edit / delete events. Click a row for the venue heatmap, fellows-in-attendance table, and adjourn-permanently button. |
+| **Fellows** | Paged list with email search + role / status filters. Drill in for a full dossier (interests, joined sessions, match count, recent ledger entries) plus suspend / reinstate / soft-delete / hard-delete + role-change controls. |
+| **Ledger** | Searchable view over the immutable `audit_log` (filter by actor UUID, action name, since-time). Read-only — the table is protected by a Postgres trigger (Flyway V9). |
+| **Apparatus** | Push outbox queue with status filter + per-row retry, plus the same tile-grid as Overview. |
+
+Auth uses the same JWT — there's a `role` claim, `SecurityConfig` gates `/api/admin/**` to `hasAnyRole("ADMIN","SUPER_ADMIN")`, and only `SUPER_ADMIN` can change roles or hard-delete users (last super-admin is protected). For prod, `SNS_ADMIN_EMAIL` must be set or `ProductionSecretsCheck` refuses to start.
+
 Re-seeding wipes the volume:
 
 ```bash

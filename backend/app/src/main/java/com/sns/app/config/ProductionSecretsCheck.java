@@ -31,6 +31,7 @@ public class ProductionSecretsCheck {
     private final String jwtPrivate;
     private final String jwtPublic;
     private final boolean seedDemoData;
+    private final String adminEmail;
 
     public ProductionSecretsCheck(
         @Value("${sns.qr.hmac-key:}") String qrHmac,
@@ -38,7 +39,8 @@ public class ProductionSecretsCheck {
         @Value("${sns.audit.ip-salt:}") String auditIpSalt,
         @Value("${sns.jwt.private-key:}") String jwtPrivate,
         @Value("${sns.jwt.public-key:}") String jwtPublic,
-        @Value("${sns.dev.seed-demo-data:false}") boolean seedDemoData
+        @Value("${sns.dev.seed-demo-data:false}") boolean seedDemoData,
+        @Value("${sns.admin.bootstrap-email:}") String adminEmail
     ) {
         this.qrHmac = qrHmac;
         this.cryptoMaster = cryptoMaster;
@@ -46,6 +48,7 @@ public class ProductionSecretsCheck {
         this.jwtPrivate = jwtPrivate;
         this.jwtPublic = jwtPublic;
         this.seedDemoData = seedDemoData;
+        this.adminEmail = adminEmail;
     }
 
     @PostConstruct
@@ -61,6 +64,10 @@ public class ProductionSecretsCheck {
         if (seedDemoData) {
             // Inserts 21 fixture users with the well-known seed password — must never run in prod.
             offenders.add("sns.dev.seed-demo-data (set to false in prod; seeds fixture users)");
+        }
+        if (adminEmail == null || adminEmail.isBlank()) {
+            // No way to reach the /admin console without at least one SUPER_ADMIN.
+            offenders.add("sns.admin.bootstrap-email (no SUPER_ADMIN bootstrap email set)");
         }
         if (!offenders.isEmpty()) {
             throw new BeanInitializationException(

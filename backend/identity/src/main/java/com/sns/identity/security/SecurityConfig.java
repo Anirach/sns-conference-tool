@@ -12,8 +12,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -24,11 +26,13 @@ import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
 @Configuration
 @EnableConfigurationProperties(SnsJwtProperties.class)
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
@@ -101,10 +105,28 @@ public class SecurityConfig {
         };
     }
 
+    /**
+     * Maps the {@code role} claim issued by {@link SnsJwtService} to a {@code ROLE_<name>}
+     * {@code SimpleGrantedAuthority} so {@code .hasAnyRole("ADMIN","SUPER_ADMIN")} works on the
+     * admin matcher. Tokens without a role claim get no admin authority — they remain ordinary
+     * authenticated participants for everything outside {@code /api/admin/**}.
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        var converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            String role = jwt.getClaimAsString("role");
+            if (role == null || role.isBlank()) return List.of();
+            return List.of(new SimpleGrantedAuthority("ROLE_" + role));
+        });
+        return converter;
+    }
+
     @Bean
     public SecurityFilterChain filterChain(
         HttpSecurity http,
-        RequestMatcher prometheusScrapeMatcher
+        RequestMatcher prometheusScrapeMatcher,
+        JwtAuthenticationConverter jwtAuthenticationConverter
     ) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
@@ -123,9 +145,10 @@ public class SecurityConfig {
                 ).permitAll()
                 .requestMatchers(prometheusScrapeMatcher).permitAll()
                 // /actuator/prometheus without a valid scrape token falls through to JWT auth.
+                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 .anyRequest().authenticated()
             )
-            .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
+            .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
     }
 }
