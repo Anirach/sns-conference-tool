@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-All five phases of the implementation plan plus the follow-up code-completion round have landed in `main`:
+All five phases of the implementation plan plus the follow-up code-completion, performance, and security rounds have landed in `main`:
 
 - **Phase 0** — CI, Playwright smoke test, OpenAPI 3.1 spec.
 - **Phase 1** — Spring Boot backend (Auth + Profile), RS256 JWT + rotating refresh, Flyway V1–V2.
@@ -12,6 +12,8 @@ All five phases of the implementation plan plus the follow-up code-completion ro
 - **Phase 3** — STOMP over WebSocket chat (JWT CONNECT auth), multi-pod fan-out via `RedisChatRelay`, push outbox with `FcmPushGateway` + `ApnsPushGateway` + logging fallback routed by `PushGatewayRouter`, idempotent chat send.
 - **Phase 4** — SNS OAuth (Facebook, LinkedIn) with AES-256-GCM tokens + scheduled enrichment job, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter, `audit_log` writes on every actionable path, `PiiScrubber` in logs.
 - **Phase 5** — `X-Request-Id` + JSON logs with PII masking, Micrometer + OTel, 7 Prometheus alerts, Grafana dashboard, Helm chart (incl. optional Redis Sentinel + NetworkPolicy), Terraform modules (VPC/RDS/Redis/S3/KMS/Route53/ACM), contract + security CI gates, k6 load scenarios, runbooks.
+- **Performance round** — `recomputeForUser` incremental matching (O(N) on single-user changes), `LEAST/GREATEST`-free vicinity SQL with CTE-hoisted "me", N+1 fix on `listJoined`, paged `findAll` everywhere, `PushGatewayRouter` EnumMap dispatch, `SELECT … FOR UPDATE SKIP LOCKED` outbox claim, bucketed Redis chat channels (no `PSUBSCRIBE`).
+- **Security round** — login + refresh rate-limit buckets (per-IP + per-email), phantom-hash for unknown emails, constant-time TAN compare, refresh-token reuse-detection family revoke, JWT `iss` + `aud` validation, `PasswordPolicy` (length / email-equal / 100-entry blocklist), CORS allowlist driven by `sns.security.cors.allowed-origins` (HTTP + STOMP), MIME + magic-byte upload sniff, `/actuator/prometheus` scrape-token gate, audit-log immutability trigger + 180-day prune cron, `ProductionSecretsCheck` boot-time gate refusing dev defaults under `prod`, `Cache-Control: no-store` on `/api/auth/**`.
 
 What remains is external-only: real Firebase / OAuth / APNs credentials, `flutter create` + Gradle wrapper + Isar codegen on a dev machine, AWS account provisioning, store submissions. See [Environment gaps](#environment-gaps-cannot-be-done-from-code-alone).
 
@@ -109,18 +111,32 @@ The most non-obvious system in this repo. Every cross-boundary call uses `{ id, 
 - **Axios** (`web/lib/api/axios.ts`): injects `Authorization: Bearer <jwt>` from bridge storage; on 401 silently hits `/api/auth/refresh` and retries once.
 
 ### Realtime (Phase 3)
-STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Fan-out goes through `ChatRelay` — `RedisChatRelay` is the default (`sns.chat.relay=redis`) and publishes each persisted message to `ws:chat:{userId}` channels that every backend instance subscribes to; `InProcessChatRelay` (`sns.chat.relay=inproc`) bypasses Redis for single-pod / tests.
+STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Fan-out goes through `ChatRelay` — `RedisChatRelay` is the default (`sns.chat.relay=redis`) and publishes each persisted message to bucketed channels (`ws:chat:bucket:{hash(userId) % 64}`) that every backend instance subscribes to with plain `SUBSCRIBE` — eliminates the `PSUBSCRIBE` pattern-match hot spot that the old per-user-channel design caused. `InProcessChatRelay` (`sns.chat.relay=inproc`) bypasses Redis for single-pod / tests. Allowed WS origins come from `sns.security.cors.allowed-origins` — empty list means same-origin only.
 
 ### Matching engine (Phase 2)
 - `KeywordExtractor` (in `:interest`) is an interface with two implementations: `TfKeywordExtractor` (dependency-free TF + stopwords; default) and `OpenNlpKeywordExtractor` (`@Primary` when `sns.nlp.models-dir` is set — tokenizer → POS filter → lemmatizer → RAKE-style bigram boost). Both return an L2-normalised weight vector stored as JSONB `{keyword: weight}`.
-- `MatchingService.recompute(eventId)` builds one vector per user (sum-then-normalise of their interests), cosine-compares every canonical pair (`user_id_a < user_id_b`), and upserts rows with similarity ≥ 0.05.
+- `MatchingService.recompute(eventId)` builds one vector per user (sum-then-normalise of their interests), cosine-compares every canonical pair (`user_id_a < user_id_b`), and upserts rows with similarity ≥ 0.05. **O(N²)** — used only by the scheduled sweep.
+- `MatchingService.recomputeForUser(eventId, userId)` is the **O(N)** incremental path. Wired to `UserJoinedEvent` (single-user join) and `UserInterestsChanged` (interest edit) so a single event participant change doesn't trigger a full sweep.
 - Triggers: a `@Scheduled` sweep every ~3 min (configurable), plus `@TransactionalEventListener(AFTER_COMMIT)` on participation and interest changes. A new match publishes `MatchFound`, which `NotificationService` turns into push outbox rows.
 
 ### Vicinity cache (Phase 2, hardened in the completion round)
 `VicinityService.matchesInRadius` is `@Cacheable(cacheNames="vicinity")` with a 10-s TTL (Redis-backed via `CacheConfig`). Cache is evicted on `LocationUpdated` (posted after a location fix commits) and on `MatchRecomputeRequested` so the next read sees fresh similarity rows. Location ingest itself is server-side-throttled: fixes within 30 s AND < 10 m of the previous are rejected silently and increment `sns_location_throttled`.
 
 ### Push pipeline (Phase 3)
-Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default) → `PushGatewayRouter.deliver`. The router dispatches by `DeviceTokenEntity.Platform`: ANDROID/WEB → `FcmPushGateway` (firebase-admin; `@ConditionalOnProperty` on `sns.push.fcm.credentials-json`), IOS → `ApnsPushGateway` (pushy; `@ConditionalOnProperty` on `sns.push.apns.team-id`). `LoggingPushGateway` is always registered as a fallback. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`.
+Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default). The drain uses `claimPendingIds(batch=50)` which executes `SELECT … FOR UPDATE SKIP LOCKED` so two pods drain concurrently without picking the same row; the attempts counter is incremented inside the short claim transaction. Each row's gateway call happens outside that transaction so row locks are released before the network I/O. `PushGatewayRouter` resolves once at construction into an `EnumMap<Platform, PushGateway>`: ANDROID/WEB → `FcmPushGateway` (firebase-admin; `@ConditionalOnProperty` on `sns.push.fcm.credentials-json`), IOS → `ApnsPushGateway` (pushy; `@ConditionalOnProperty` on `sns.push.apns.team-id`). `LoggingPushGateway` is always registered as fallback. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`.
+
+### Auth & security (security round)
+- **Brute-force throttling.** `RateLimitFilter` covers register (5 / h / IP), login (30 / h / IP and 10 / h / email), refresh (60 / h / IP). Buckets share the `RateLimiter` interface — `InMemoryRateLimiter` (default) or `RedissonRateLimiter` (multi-pod, `sns.rate-limit.backend=redis`).
+- **Timing-safe login.** `AuthService.login` runs BCrypt against a precomputed `PHANTOM_HASH` when the email is unknown so wall-clock matches the bad-password branch — closes the account-enumeration timing channel.
+- **Refresh-token reuse detection.** `RefreshTokenService.rotate` treats a presented-revoked token as theft: walks `replaced_by` forward, revokes every descendant, then revokes every other live token for that user. `AuthService.refresh` emits `auth.refresh.reuse_detected`.
+- **JWT validation.** `JwtDecoder` is wrapped with `JwtValidators.createDefaultWithIssuer(props.issuer())` plus a `JwtClaimValidator` for `aud` matching `sns.jwt.audience`. Tokens signed with our key but addressed at a different environment are rejected.
+- **PasswordPolicy** (`:identity`) rejects passwords < 8 chars, equal to the email's local part, or in a 100-entry blocklist before BCrypt encoding.
+- **CORS.** Single source: `sns.security.cors.allowed-origins` (CSV; default empty = same-origin only). `SnsCorsConfiguration` builds the HTTP filter; `WebSocketConfig` reads the same property and refuses every cross-origin handshake by default.
+- **Upload safety.** `InterestController.upload` validates Content-Type against `{application/pdf, text/plain, text/markdown}` and sniffs file magic bytes (`%PDF-` for PDFs; UTF-8 decode for text). `spring.servlet.multipart.max-{file,request}-size=10MB` caps prevent OOM via giant multipart bodies.
+- **Actuator gate.** `/actuator/prometheus` is dropped from `permitAll`. The `prometheusScrapeMatcher` bean permits anonymous access only when the request carries `Authorization: Bearer <sns.actuator.scrape-token>` (constant-time compare). Authenticated users with a JWT can still hit it via the normal chain.
+- **Audit log integrity.** Flyway V9 installs a `BEFORE UPDATE OR DELETE` trigger that throws unless the session GUC `app.audit_prune` is set. `AuditLogPruneJob` (`@Scheduled`, default `0 30 3 * * *`) sets the GUC and pages 500-row deletes for rows older than `sns.audit.retention-days` (180 d).
+- **Boot-time secret gate.** `ProductionSecretsCheck` (`@Profile("prod")`) refuses to start if `sns.qr.hmac-key`, `sns.crypto.master-key`, `sns.audit.ip-salt`, or the JWT keypair are unset / dev-default.
+- **Cache discipline.** `SecurityHeadersFilter` adds `Cache-Control: no-store` + `Pragma: no-cache` on every `/api/auth/**` response so a misconfigured CDN can't cache bearer tokens.
 
 ### GDPR (Phase 4)
 - `GET /api/users/me/export` streams a ZIP with profile.json, interests, matches, chat-threads + chat-messages, sns-links, manifest. The aggregator lives in `:app` so it can reach every module.

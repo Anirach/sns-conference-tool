@@ -15,15 +15,18 @@ All five phases of the original roadmap plus the follow-up code-completion round
 
 | Area | What shipped |
 |---|---|
-| **Auth** | RS256 JWT + rotating refresh, BCrypt(12), JWKS, RS256 dev-ephemeral fallback |
-| **Events + Matching** | PostGIS `ST_DWithin` vicinity (Redis-cached 10 s TTL, event-evicted), TF or OpenNLP keyword extraction, async recompute triggered by domain events, HMAC-signed QR tokens alongside the legacy hash form |
-| **Chat** | STOMP over WebSocket with JWT CONNECT auth, multi-pod fan-out via `RedisChatRelay` (Pub/Sub), idempotent send with client-supplied message IDs |
-| **Push** | DB-backed outbox with at-least-once drain, `PushGatewayRouter` dispatching to `FcmPushGateway` (firebase-admin) / `ApnsPushGateway` (pushy) by platform; logging fallback when no creds |
+| **Auth** | RS256 JWT with `iss` + `aud` validation, rotating refresh with reuse-detection family revoke, BCrypt(12) + phantom-hash for unknown emails (timing-safe), constant-time TAN compare, `PasswordPolicy` blocklist + email-equal check, JWKS endpoint |
+| **Events + Matching** | PostGIS `ST_DWithin` vicinity (Redis-cached 10 s TTL, event-evicted), TF or OpenNLP keyword extraction, incremental + scheduled async recompute, HMAC-signed QR tokens alongside the legacy hash form |
+| **Chat** | STOMP over WebSocket with JWT CONNECT auth, multi-pod fan-out via `RedisChatRelay` (Pub/Sub bucketed channels), idempotent send with client-supplied message IDs, `@Valid` body validation on REST + WS handlers |
+| **Push** | DB-backed outbox with `SELECT … FOR UPDATE SKIP LOCKED` claim, `PushGatewayRouter` dispatches by platform to `FcmPushGateway` (firebase-admin) / `ApnsPushGateway` (pushy); logging fallback when no creds |
 | **SNS OAuth** | Facebook + LinkedIn link/callback/unlink with AES-256-GCM encrypted tokens, scheduled enrichment job, mobile flows via `flutter_facebook_auth` + LinkedIn custom tab |
-| **GDPR** | `/api/users/me/export` aggregates profile/interests/matches/chats/SNS, soft-delete + 30-day hard-delete cron, `audit_log` writes on every actionable path |
-| **Rate limiting** | Redisson `RRateLimiter` (multi-pod) or in-memory fallback, toggle via `sns.rate-limit.backend` |
-| **Observability** | JSON logs with `X-Request-Id` correlation + PII masking, Micrometer + OTel OTLP, 7 Prometheus alerts, Grafana dashboard |
-| **Security headers** | HSTS, CSP, Referrer-Policy, Permissions-Policy on every response |
+| **GDPR** | `/api/users/me/export` aggregates profile/interests/matches/chats/SNS, soft-delete + 30-day hard-delete cron, `audit_log` writes on every actionable path with DB-trigger immutability + 180-day retention prune |
+| **Rate limiting** | Buckets for register / login (per-IP + per-email) / refresh; Redisson (`RedissonRateLimiter`) or in-memory backend toggle |
+| **Transport security** | HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, `Cache-Control: no-store` on `/api/auth/**`; CORS allowlist driven by `sns.security.cors.allowed-origins` (HTTP + STOMP read the same property; default same-origin only) |
+| **Upload safety** | MIME allowlist + magic-byte sniff on `/api/interests` multipart, hard 10 MB cap from `spring.servlet.multipart.max-file-size` |
+| **Actuator** | `/actuator/prometheus` gated by `sns.actuator.scrape-token` (constant-time bearer compare) or JWT |
+| **Boot-time gate** | `ProductionSecretsCheck` halts startup under `prod` profile if any of `sns.qr.hmac-key`, `sns.crypto.master-key`, `sns.audit.ip-salt`, or the JWT keypair is missing / dev-default |
+| **Observability** | JSON logs with `X-Request-Id` correlation + `PiiScrubber` masking, Micrometer + OTel OTLP, 7 Prometheus alerts, Grafana dashboard |
 | **Deployment** | Helm chart with HPA, PDB, Ingress, CronJob, optional Redis Sentinel StatefulSet, NetworkPolicy; Terraform modules (VPC, PostGIS RDS, ElastiCache Redis, S3, KMS, Route53, ACM) with staging + prod compositions |
 | **Tests** | Unit + integration + contract diff gate + Flutter widget + k6 load scenarios |
 | **CI** | `contract` (OpenAPI ⊇ MSW), `security` (pnpm audit, Gradle dep-check, ZAP baseline), `web`, `mobile`, `backend`, plus `deploy-{backend,web,mobile}` workflows |

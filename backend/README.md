@@ -174,8 +174,14 @@ Builds from `backend/app/Dockerfile` and wires to Postgres + MailHog + Redis + M
 | `sns.push.fcm.project-id` | unset | Optional override |
 | `sns.push.apns.team-id` / `.key-id` / `.bundle-id` / `.signing-key-pem` / `.sandbox` | unset | When team-id set, registers `ApnsPushGateway` |
 | `sns.chat.relay` | `redis` | `redis` (Pub/Sub fan-out) or `inproc` (single-pod / tests) |
+| `sns.chat.relay-buckets` | `64` | Number of bucketed channels `RedisChatRelay` subscribes to |
 | `sns.rate-limit.backend` | `memory` | `memory` (in-process fixed-window) or `redis` (Redisson) |
 | `sns.rate-limit.register-per-ip-per-hour` | `5` | Budget for `POST /api/auth/register` |
+| `sns.rate-limit.login-per-ip-per-hour` | `30` | Budget for `POST /api/auth/login`, per IP |
+| `sns.rate-limit.login-per-email-per-hour` | `10` | Budget for `POST /api/auth/login`, per email |
+| `sns.rate-limit.refresh-per-ip-per-hour` | `60` | Budget for `POST /api/auth/refresh` |
+| `sns.security.cors.allowed-origins` | unset | CSV. Empty = same-origin only. Same source for HTTP CORS + STOMP `/ws` |
+| `sns.actuator.scrape-token` | unset | Bearer token Prometheus scrapes with. When unset, `/actuator/prometheus` falls back to JWT auth |
 | `sns.location.throttle-seconds` | `30` | Min seconds between accepted GPS fixes |
 | `sns.location.throttle-min-move-meters` | `10` | Min distance between accepted fixes |
 | `sns.cache.vicinity-ttl-seconds` | `10` | Redis cache TTL for vicinity responses |
@@ -184,12 +190,22 @@ Builds from `backend/app/Dockerfile` and wires to Postgres + MailHog + Redis + M
 | `sns.enrichment.cron` | `0 15 */6 * * *` | Cron for the enrichment sweep |
 | `sns.enrichment.stale-hours` | `24` | Skip links refreshed within this window |
 | `sns.audit.ip-salt` | `dev-audit-ip-salt-change-me` | Salt applied before SHA-256 hashing of request IPs |
+| `sns.audit.retention-days` | `180` | Rows older than this are pruned by `AuditLogPruneJob` |
+| `sns.audit.prune-cron` | `0 30 3 * * *` | When `AuditLogPruneJob` runs |
 | `sns.gdpr.hard-delete-grace-days` | `30` | Soft→hard delete age |
 | `sns.gdpr.hard-delete-cron` | `0 0 3 * * *` | Nightly sweep |
 | `sns.qr.hmac-key` | `dev-hmac-key-change-me` | Rotate in prod; see [docs/SECURITY.md](../docs/SECURITY.md) |
 | `sns.crypto.master-key` | `dev-sns-crypto-key-change-me` | AES-256-GCM key seed for SNS tokens; rotate via staged deploy |
+| `sns.jwt.audience` | `sns-conf` | Required `aud` claim. Tokens with a different audience are rejected |
 | `sns.oauth.{facebook,linkedin}.client-id` / `-secret` / `-redirect-uri` / `-scopes` | unset | When unset, SNS callback returns a dev-stub link |
+| `spring.servlet.multipart.max-file-size` | `10MB` | Hard cap per upload |
+| `spring.servlet.multipart.max-request-size` | `10MB` | Hard cap per multipart request |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP target for traces |
+
+> **`prod` profile boots only when secrets are real.** `ProductionSecretsCheck` halts startup
+> if `sns.qr.hmac-key`, `sns.crypto.master-key`, `sns.audit.ip-salt`, or the JWT keypair are
+> missing / dev-default. Setting all of these (plus `sns.security.cors.allowed-origins`) is
+> the minimum prod-deploy checklist.
 
 ## Wiring the web frontend
 
