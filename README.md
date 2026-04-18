@@ -81,7 +81,7 @@ flowchart LR
 
     Web    -->|REST + STOMP| AuthSvc
     Mobile -->|REST + STOMP| AuthSvc
-    Mobile -.->|JS bridge<br/>(GPS, QR, push)| Web
+    Mobile -.->|"JS bridge<br/>(GPS, QR, push)"| Web
 
     AuthSvc & EventSvc & InterestSvc & MatchingSvc & ChatSvc & NotifSvc & SnsSvc --> PG
     EventSvc & ChatSvc & NotifSvc --> Redis
