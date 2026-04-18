@@ -230,14 +230,16 @@ After ~3 minutes (cold build) you'll have:
 | **sns-minio** | http://localhost:9001 | S3 console — login `minio` / `miniosecret` |
 | **sns-mailhog** | http://localhost:8025 | inbox where verification TANs land (dev TAN is always `123456`) |
 
-Open http://localhost:3000 — the welcome page renders. By default the web app is in **MSW mock mode**, so every `/api/*` call is fake-served from `web/lib/fixtures/`. To switch to the real backend container, edit the `web` service in [`infra/docker-compose.dev.yml`](infra/docker-compose.dev.yml):
+Open http://localhost:3000 — the welcome page renders. By default the `web` service runs with `NEXT_PUBLIC_MOCK_API: "0"`, meaning every `/api/*` call is proxied to the real `backend` container (the seeded Postgres dataset). Log in with `you@example.com` / `Demo!2026` (see [Seeded demo data](#seeded-demo-data) below).
+
+To run frontend-only against the MSW mocks instead — useful for UI work without bringing up Postgres / Redis — edit the `web` service in [`infra/docker-compose.dev.yml`](infra/docker-compose.dev.yml):
 
 ```yaml
 environment:
-  NEXT_PUBLIC_MOCK_API: "0"   # was "1"
+  NEXT_PUBLIC_MOCK_API: "1"   # was "0"
 ```
 
-…then `docker compose -f docker-compose.dev.yml --profile web up -d web` again. Next.js's rewrite proxies `/api/*` to `http://backend:8080` server-side inside the compose network.
+…then `docker compose -f docker-compose.dev.yml --profile web up -d web` again.
 
 ### Seeded demo data
 
@@ -252,12 +254,14 @@ The backend service ships with `SNS_DEV_SEED_DEMO_DATA: "true"` (in [infra/docke
 | Similarity matches       | ~163 across both active events                           |
 | Chat messages            | 19 across 6 threads                                      |
 
-All portraits resolve from `/avatars/*` (the same files Next.js serves out of [web/public/avatars/](web/public/avatars/)). After flipping `NEXT_PUBLIC_MOCK_API: "0"`, log in at http://localhost:3000 with:
+All portraits resolve from `/avatars/*` (the same files Next.js serves out of [web/public/avatars/](web/public/avatars/)). Log in at http://localhost:3000 with:
 
 ```
 email:    you@example.com
 password: Demo!2026
 ```
+
+A companion `DemoDataKeepalive` (also gated on `sns.dev.seed-demo-data`) bumps `participations.last_update` once a minute so the seeded fellows stay inside `VicinityService`'s 5-minute freshness window indefinitely — the Fellows page never goes blank in dev.
 
 Re-seeding wipes the volume:
 

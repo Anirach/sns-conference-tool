@@ -97,6 +97,7 @@ Dev-mode overrides:
 - `sns.verification.dev-mode=true` (default): TAN is always `123456`; real SMTP send still attempted.
 - `sns.dev.seed-events=true` (default): three demo events (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired) are seeded at boot.
 - `sns.dev.seed-demo-data=true` (default off; on in `infra/docker-compose.dev.yml`): on the first fresh boot also seeds 20 fixture users, profiles with `/avatars/*` portraits, NeurIPS+ACL participations with PostGIS positions clustered around each venue, real interests with `KeywordExtractor`-derived vectors, recomputed similarity matches, and 19 chat messages mirroring `web/lib/fixtures/chats.ts`. Idempotent via the sentinel `you@example.com`. Login: `you@example.com` / `Demo!2026`. Refused under the `prod` profile by `ProductionSecretsCheck`.
+- The same flag activates `DemoDataKeepalive` — a `@Scheduled(fixedDelay=60s)` job that refreshes any `participations.last_update` older than 4 minutes back to `now()` and clears the `vicinity` cache, so the seeded fellows stay inside `VicinityService`'s 5-minute freshness filter indefinitely (the Fellows screen never goes blank).
 
 ## End-to-end smoke (curl)
 
