@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Radar, Users, MessageCircle, Settings } from "lucide-react";
+import { Radar, Users, MessageCircle, Settings, ScrollText, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { useIsAdmin } from "@/lib/state/authStore";
 
-const tabs = [
+interface Tab {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  match: (p: string) => boolean;
+}
+
+const baseTabs: Tab[] = [
   {
     to: "/events/join",
     label: "Discover",
@@ -33,6 +41,13 @@ const tabs = [
   }
 ];
 
+const adminTab: Tab = {
+  to: "/admin",
+  label: "Registry",
+  Icon: ScrollText,
+  match: (p: string) => p.startsWith("/admin")
+};
+
 const HIDDEN_PATTERNS = [
   /^\/$/,
   /^\/register$/,
@@ -44,11 +59,17 @@ const HIDDEN_PATTERNS = [
 
 export function BottomTabBar() {
   const pathname = usePathname();
+  const isAdmin = useIsAdmin();
   if (HIDDEN_PATTERNS.some((re) => re.test(pathname))) return null;
+
+  const tabs = isAdmin ? [...baseTabs, adminTab] : baseTabs;
 
   return (
     <nav
-      className="sticky bottom-0 z-30 grid h-16 grid-cols-4 bg-background/95 backdrop-blur hairline-t"
+      className={cn(
+        "sticky bottom-0 z-30 grid h-16 bg-background/95 backdrop-blur hairline-t",
+        isAdmin ? "grid-cols-5" : "grid-cols-4"
+      )}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {tabs.map(({ to, label, Icon, match }) => {
