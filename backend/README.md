@@ -95,7 +95,8 @@ Default endpoints:
 
 Dev-mode overrides:
 - `sns.verification.dev-mode=true` (default): TAN is always `123456`; real SMTP send still attempted.
-- `sns.dev.seed-events=true` (default): demo event `NEURIPS2026` is seeded at boot.
+- `sns.dev.seed-events=true` (default): three demo events (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired) are seeded at boot.
+- `sns.dev.seed-demo-data=true` (default off; on in `infra/docker-compose.dev.yml`): on the first fresh boot also seeds 20 fixture users, profiles with `/avatars/*` portraits, NeurIPS+ACL participations with PostGIS positions clustered around each venue, real interests with `KeywordExtractor`-derived vectors, recomputed similarity matches, and 19 chat messages mirroring `web/lib/fixtures/chats.ts`. Idempotent via the sentinel `you@example.com`. Login: `you@example.com` / `Demo!2026`. Refused under the `prod` profile by `ProductionSecretsCheck`.
 
 ## End-to-end smoke (curl)
 
@@ -185,7 +186,8 @@ Container env (set in compose, override via `.env`):
 | `sns.jwt.access-token-ttl` | `PT15M` | |
 | `sns.jwt.refresh-token-ttl` | `P30D` | |
 | `sns.verification.dev-mode` | `true` | TAN is `123456`; set false in prod |
-| `sns.dev.seed-events` | `true` | Seed demo event; set false in prod |
+| `sns.dev.seed-events` | `true` | Seed the three demo events; set false in prod |
+| `sns.dev.seed-demo-data` | `false` | Seed 20 fixture users + interests + matches + chats — login `you@example.com` / `Demo!2026`. Refused in `prod`. |
 | `sns.matching.sweep-interval-ms` | `180000` | Scheduled recompute cadence |
 | `sns.push.drain-interval-ms` | `5000` | Outbox drain cadence |
 | `sns.push.fcm.credentials-json` | unset | Firebase service-account JSON; when set, registers `FcmPushGateway` |

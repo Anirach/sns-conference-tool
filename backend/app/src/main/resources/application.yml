@@ -88,3 +88,12 @@ sns:
   audit:
     retention-days: 180
     prune-cron: "0 30 3 * * *"
+  dev:
+    # When true, on boot DevSeedRunner inserts the 3 demo events the MSW mocks ship
+    # (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired). Idempotent.
+    seed-events: ${SNS_DEV_SEED_EVENTS:true}
+    # When true, on boot DemoDataSeeder also inserts the 21 demo users + profiles +
+    # participations + interests + chats from web/lib/fixtures/, so flipping
+    # NEXT_PUBLIC_MOCK_API=0 produces a populated UI. Default off — never enable in prod.
+    # Demo login: you@example.com / Demo!2026.
+    seed-demo-data: ${SNS_DEV_SEED_DEMO_DATA:false}

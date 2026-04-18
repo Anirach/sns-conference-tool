@@ -38,7 +38,7 @@ The Gradle wrapper (`gradlew`, `gradle/wrapper/gradle-wrapper.jar`) is committed
 ./gradlew :app:bootJar            # produces app/build/libs/sns-backend.jar
 ```
 
-Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123456`. `sns.dev.seed-events=true` seeds the `NEURIPS2026` demo event idempotently. `sns.rate-limit.backend=memory` (default) runs the fixed-window limiter in-process — flip to `redis` for multi-pod prod. `sns.chat.relay` defaults to `redis` (requires Redis on the classpath connection) — flip to `inproc` for tests or local single-node runs. See [backend/README.md](backend/README.md#configuration-reference) for the full property list.
+Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123456`. `sns.dev.seed-events=true` (default) seeds the three demo events (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired) idempotently. `sns.dev.seed-demo-data=true` (default off; flipped on in `infra/docker-compose.dev.yml`) additionally seeds 20 fixture users + profiles + participations + interests + ~163 similarity matches + 19 chat messages so flipping `NEXT_PUBLIC_MOCK_API=0` produces a populated UI — login `you@example.com` / `Demo!2026`. Refused under `prod` by `ProductionSecretsCheck`. `sns.rate-limit.backend=memory` (default) runs the fixed-window limiter in-process — flip to `redis` for multi-pod prod. `sns.chat.relay` defaults to `redis` (requires Redis on the classpath connection) — flip to `inproc` for tests or local single-node runs. See [backend/README.md](backend/README.md#configuration-reference) for the full property list.
 
 ### Mobile (`cd mobile`)
 ```bash

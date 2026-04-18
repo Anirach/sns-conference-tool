@@ -102,6 +102,11 @@ services:
       CHAT_RELAY: redis
       RATE_LIMIT_BACKEND: memory
       SERVER_PORT: "8080"
+      # On a fresh `docker compose up` (volume empty), seed Postgres with the same demo
+      # dataset the MSW mocks ship — 21 users, NeurIPS+ACL participations, interests with
+      # extracted keywords, recomputed similarity matches, 18 chat messages. Login as
+      # you@example.com / Demo!2026. Set to "false" to start with an empty DB.
+      SNS_DEV_SEED_DEMO_DATA: "true"
     ports:
       - "8080:8080"
 

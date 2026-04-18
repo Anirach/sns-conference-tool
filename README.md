@@ -239,6 +239,35 @@ environment:
 
 …then `docker compose -f docker-compose.dev.yml --profile web up -d web` again. Next.js's rewrite proxies `/api/*` to `http://backend:8080` server-side inside the compose network.
 
+### Seeded demo data
+
+The backend service ships with `SNS_DEV_SEED_DEMO_DATA: "true"` (in [infra/docker-compose.dev.yml](infra/docker-compose.dev.yml)). On a fresh boot — i.e. when the Postgres volume is empty — `DemoDataSeeder` writes the same dataset the MSW fixtures use:
+
+| What                     | Count                                                    |
+|--------------------------|----------------------------------------------------------|
+| Users + profiles         | 20 (Alex Chen + 19 fellows)                              |
+| Conference events        | 3 (NeurIPS Bangkok, ACL Vienna, ICML Montreal expired)   |
+| Participations           | 20 NeurIPS + 7 ACL with PostGIS positions near each venue |
+| Interests                | 41 (each with real `KeywordExtractor` keywords)          |
+| Similarity matches       | ~163 across both active events                           |
+| Chat messages            | 19 across 6 threads                                      |
+
+All portraits resolve from `/avatars/*` (the same files Next.js serves out of [web/public/avatars/](web/public/avatars/)). After flipping `NEXT_PUBLIC_MOCK_API: "0"`, log in at http://localhost:3000 with:
+
+```
+email:    you@example.com
+password: Demo!2026
+```
+
+Re-seeding wipes the volume:
+
+```bash
+docker compose -f infra/docker-compose.dev.yml --profile backend --profile web down -v
+docker compose -f infra/docker-compose.dev.yml --profile backend --profile web up -d --build
+```
+
+The seeder is idempotent on subsequent boots — it short-circuits when `you@example.com` already exists, so a `docker restart sns-backend` doesn't double-insert. To start with an empty DB instead, set `SNS_DEV_SEED_DEMO_DATA: "false"` (or unset it). The seeder is also explicitly refused under the `prod` profile by `ProductionSecretsCheck`.
+
 **Common operations:**
 
 ```bash

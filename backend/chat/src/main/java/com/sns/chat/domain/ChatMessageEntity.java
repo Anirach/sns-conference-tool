@@ -54,4 +54,5 @@ public class ChatMessageEntity {
     public String getClientMessageId() { return clientMessageId; }
     public void setClientMessageId(String clientMessageId) { this.clientMessageId = clientMessageId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
 }
