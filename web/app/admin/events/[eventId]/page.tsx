@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { adminApi } from "@/lib/api/admin";
 import { AppShell } from "@/components/layout/AppShell";
+import { CipherQrCard } from "@/components/admin/CipherQrCard";
 import { StatCard } from "@/components/admin/StatCard";
 import { VenueHeatmap } from "@/components/admin/VenueHeatmap";
 import { AdminTable, type ColumnDef } from "@/components/admin/Table";
@@ -93,6 +94,12 @@ export default function AdminEventDetailPage() {
             accent={detail?.expired ? "warn" : "default"}
           />
         </section>
+
+        {detail ? (
+          <section className="mb-6">
+            <CipherQrCard cipher={detail.qrCode} eventName={detail.name} />
+          </section>
+        ) : null}
 
         <section className="mb-6">
           <h3 className="eyebrow mb-3 text-brass-500">Venue heatmap</h3>
