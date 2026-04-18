@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
-import { AdminShell } from "@/components/layout/AdminShell";
 import { useAuthStore, useIsAdmin } from "@/lib/state/authStore";
 
 /**
@@ -46,5 +45,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  return <AdminShell>{children}</AdminShell>;
+  // No wrapper — each /admin/* page composes its own AppShell so the participant
+  // BottomTabBar (with the Registry tab highlighted) stays visible inside admin.
+  return <>{children}</>;
 }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api/admin";
 import type { Role } from "@/lib/fixtures/types";
+import { AppShell } from "@/components/layout/AppShell";
 import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/Button";
 
@@ -34,88 +35,71 @@ export default function AdminUserDossierPage() {
   });
 
   if (isLoading || !data) {
-    return <p className="eyebrow text-brass-500">Loading dossier…</p>;
+    return (
+      <AppShell title="Fellow" eyebrow="The Registry" showBack>
+        <div className="flex-1 px-5 pt-10 text-center">
+          <p className="eyebrow text-brass-500">Loading dossier…</p>
+        </div>
+      </AppShell>
+    );
   }
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <AppShell title="Fellow" eyebrow="The Registry" showBack>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <header className="mb-5 hairline-b pb-5">
           <p className="eyebrow text-brass-500">Fellow</p>
-          <h2 className="mt-2 font-serif text-3xl">
-            {data.firstName ?? ""} {data.lastName ?? ""}
+          <h2 className="mt-2 font-serif text-3xl leading-tight">
+            <span className="italic">
+              {data.firstName ?? ""} {data.lastName ?? ""}
+            </span>
           </h2>
           <p className="mt-1 font-serif text-sm italic text-muted-foreground">
             {data.email} · {data.academicTitle ?? "—"} · {data.institution ?? "—"}
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {data.suspended ? (
-            <Button variant="outline" loading={unsuspend.isPending} onClick={() => unsuspend.mutate()}>
-              Reinstate
-            </Button>
-          ) : (
-            <Button variant="outline" loading={suspend.isPending} onClick={() => suspend.mutate()}>
-              Suspend
-            </Button>
-          )}
-          {!data.deleted ? (
-            <Button variant="outline" loading={softDelete.isPending} onClick={() => softDelete.mutate()}>
-              Soft delete
-            </Button>
+        </header>
+
+        <section className="mb-6 grid grid-cols-2 gap-3">
+          <StatCard
+            label="Status"
+            value={data.deleted ? "deleted" : data.suspended ? "suspended" : "active"}
+            accent={data.deleted ? "danger" : data.suspended ? "warn" : "default"}
+          />
+          <StatCard label="Role" value={data.role.toLowerCase().replace("_", " ")} />
+          <StatCard label="Interests" value={data.interests.length} />
+          <StatCard label="Affinities" value={data.matchCount} />
+          <StatCard label="Messages" value={data.chatMessageCount} />
+          <StatCard label="Sessions" value={data.events.length} />
+        </section>
+
+        <section className="mb-6">
+          <h3 className="eyebrow mb-3 text-brass-500">Role</h3>
+          <div className="flex flex-wrap gap-2">
+            {(["USER", "ORGANIZER", "ADMIN", "SUPER_ADMIN"] as Role[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                disabled={r === data.role || changeRole.isPending}
+                onClick={() => changeRole.mutate(r)}
+                className={`eyebrow rounded-full border px-3 py-1 transition-colors ${
+                  r === data.role
+                    ? "border-brass-500 bg-brass-500/10 text-brass-700"
+                    : "border-border/60 text-foreground/60 hover:text-foreground"
+                } disabled:opacity-50`}
+              >
+                {r.toLowerCase().replace("_", " ")}
+              </button>
+            ))}
+          </div>
+          {changeRole.isError ? (
+            <p className="mt-2 text-xs text-red-700">
+              Cannot change role (super admin restricted, or last super admin).
+            </p>
           ) : null}
-          <Button
-            variant="danger"
-            loading={hardDelete.isPending}
-            onClick={() => {
-              if (pending !== "hard") return setPending("hard");
-              hardDelete.mutate();
-            }}
-          >
-            {pending === "hard" ? "Confirm hard delete" : "Hard delete"}
-          </Button>
-        </div>
-      </header>
+        </section>
 
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <StatCard label="Role" value={data.role.toLowerCase().replace("_", " ")} />
-        <StatCard
-          label="Status"
-          value={data.deleted ? "deleted" : data.suspended ? "suspended" : "active"}
-          accent={data.deleted ? "danger" : data.suspended ? "warn" : "default"}
-        />
-        <StatCard label="Interests" value={data.interests.length} />
-        <StatCard label="Affinities" value={data.matchCount} />
-        <StatCard label="Messages" value={data.chatMessageCount} />
-      </section>
-
-      <section className="mb-6">
-        <h3 className="eyebrow mb-2 text-brass-500">Role</h3>
-        <div className="flex flex-wrap gap-2">
-          {(["USER", "ORGANIZER", "ADMIN", "SUPER_ADMIN"] as Role[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              disabled={r === data.role || changeRole.isPending}
-              onClick={() => changeRole.mutate(r)}
-              className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                r === data.role
-                  ? "border-brass-500 bg-brass-500/10 text-brass-700"
-                  : "border-border/60 text-foreground/60 hover:border-foreground/40"
-              } disabled:opacity-50`}
-            >
-              {r.toLowerCase().replace("_", " ")}
-            </button>
-          ))}
-        </div>
-        {changeRole.isError ? (
-          <p className="mt-2 text-xs text-red-700">Cannot change role (super admin restricted, or last super admin).</p>
-        ) : null}
-      </section>
-
-      <section className="mb-6 grid gap-6 md:grid-cols-2">
-        <div>
-          <h3 className="eyebrow mb-2 text-brass-500">Interests</h3>
+        <section className="mb-6">
+          <h3 className="eyebrow mb-3 text-brass-500">Interests</h3>
           <ul className="hairline divide-y divide-border/60 rounded-md bg-surface">
             {data.interests.map((i) => (
               <li key={i.interestId} className="px-4 py-3">
@@ -129,14 +113,15 @@ export default function AdminUserDossierPage() {
               <li className="px-4 py-6 text-center text-sm text-foreground/40">No interests</li>
             ) : null}
           </ul>
-        </div>
-        <div>
-          <h3 className="eyebrow mb-2 text-brass-500">Sessions joined</h3>
+        </section>
+
+        <section className="mb-6">
+          <h3 className="eyebrow mb-3 text-brass-500">Sessions joined</h3>
           <ul className="hairline divide-y divide-border/60 rounded-md bg-surface">
             {data.events.map((e) => (
-              <li key={e.eventId} className="px-4 py-3 flex items-center justify-between">
+              <li key={e.eventId} className="flex items-center justify-between px-4 py-3">
                 <span className="font-serif text-sm">{e.name}</span>
-                <span className="text-xs text-foreground/60 tabular-nums">
+                <span className="text-xs tabular-nums text-foreground/60">
                   {e.selectedRadius} m · {new Date(e.joinedAt).toLocaleDateString()}
                 </span>
               </li>
@@ -145,25 +130,53 @@ export default function AdminUserDossierPage() {
               <li className="px-4 py-6 text-center text-sm text-foreground/40">No sessions</li>
             ) : null}
           </ul>
-        </div>
-      </section>
+        </section>
 
-      <section>
-        <h3 className="eyebrow mb-2 text-brass-500">Recent ledger entries</h3>
-        <ul className="hairline divide-y divide-border/60 rounded-md bg-surface text-sm">
-          {data.recentAudit.map((a) => (
-            <li key={a.id} className="px-4 py-2 flex items-center justify-between">
-              <span><code className="text-xs text-foreground/60">{a.action}</code> {a.resourceId ? <span className="text-xs text-foreground/40">· {a.resourceType}/{a.resourceId.substring(0, 8)}</span> : null}</span>
-              <span className="text-xs tabular-nums text-foreground/60">
-                {new Date(a.createdAt).toLocaleString()}
-              </span>
-            </li>
-          ))}
-          {data.recentAudit.length === 0 ? (
-            <li className="px-4 py-6 text-center text-foreground/40">No entries</li>
+        <section className="mb-8">
+          <h3 className="eyebrow mb-3 text-brass-500">Recent ledger entries</h3>
+          <ul className="hairline divide-y divide-border/60 rounded-md bg-surface text-sm">
+            {data.recentAudit.map((a) => (
+              <li key={a.id} className="flex items-center justify-between px-4 py-2">
+                <code className="text-xs">{a.action}</code>
+                <span className="text-xs tabular-nums text-foreground/60">
+                  {new Date(a.createdAt).toLocaleString()}
+                </span>
+              </li>
+            ))}
+            {data.recentAudit.length === 0 ? (
+              <li className="px-4 py-6 text-center text-foreground/40">No entries</li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          {data.suspended ? (
+            <Button variant="outline" loading={unsuspend.isPending} onClick={() => unsuspend.mutate()} fullWidth>
+              Reinstate
+            </Button>
+          ) : (
+            <Button variant="outline" loading={suspend.isPending} onClick={() => suspend.mutate()} fullWidth>
+              Suspend
+            </Button>
+          )}
+          {!data.deleted ? (
+            <Button variant="outline" loading={softDelete.isPending} onClick={() => softDelete.mutate()} fullWidth>
+              Soft delete
+            </Button>
           ) : null}
-        </ul>
-      </section>
-    </div>
+          <Button
+            variant="danger"
+            loading={hardDelete.isPending}
+            onClick={() => {
+              if (pending !== "hard") return setPending("hard");
+              hardDelete.mutate();
+            }}
+            fullWidth
+          >
+            {pending === "hard" ? "Confirm hard delete" : "Hard delete"}
+          </Button>
+        </section>
+      </div>
+    </AppShell>
   );
 }

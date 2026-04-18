@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api/admin";
+import { AppShell } from "@/components/layout/AppShell";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
@@ -40,74 +41,78 @@ export default function AdminEventNewPage() {
     onError: (e: { response?: { status?: number; data?: { detail?: string } } }) => {
       setError(
         e?.response?.data?.detail ??
-          (e?.response?.status === 409 ? "QR code already in use" : "Could not create session")
+          (e?.response?.status === 409 ? "Cipher already in use" : "Could not create session")
       );
     }
   });
 
   return (
-    <div className="max-w-2xl">
-      <header className="mb-6">
-        <p className="eyebrow text-brass-500">In residence</p>
-        <h2 className="mt-2 font-serif text-3xl">New session</h2>
-        <p className="mt-1 font-serif text-sm italic text-muted-foreground">
-          Coin a cipher, fix the venue, set the adjournment.
-        </p>
-      </header>
+    <AppShell title="New Session" eyebrow="The Registry" showBack>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <header className="mb-6 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">In residence</p>
+          <h2 className="mt-2 font-serif text-3xl leading-tight">
+            A new <span className="italic">session</span>.
+          </h2>
+          <p className="mt-1 font-serif text-sm italic text-muted-foreground">
+            Coin a cipher, fix the venue, set the adjournment.
+          </p>
+        </header>
 
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          create.mutate();
-        }}
-      >
-        <Input label="Session name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <Input label="Venue" value={venue} onChange={(e) => setVenue(e.target.value)} required />
-        <Input
-          label="Cipher (QR plaintext)"
-          value={qrCodePlaintext}
-          onChange={(e) => setQr(e.target.value.toUpperCase())}
-          hint="Short, all caps. e.g. NEURIPS2027"
-          required
-        />
-        <Input
-          label="Adjourns at"
-          type="datetime-local"
-          value={expiry}
-          onChange={(e) => setExpiry(e.target.value)}
-          required
-        />
-        <div className="grid grid-cols-2 gap-4">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            create.mutate();
+          }}
+        >
+          <Input label="Session name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input label="Venue" value={venue} onChange={(e) => setVenue(e.target.value)} required />
           <Input
-            label="Centroid latitude"
-            type="number"
-            step="0.0001"
-            value={centroidLat}
-            onChange={(e) => setLat(e.target.value)}
-            hint="Optional. Used for the heatmap centre."
+            label="Cipher (QR plaintext)"
+            value={qrCodePlaintext}
+            onChange={(e) => setQr(e.target.value.toUpperCase())}
+            hint="Short, all caps. e.g. NEURIPS2027"
+            required
           />
           <Input
-            label="Centroid longitude"
-            type="number"
-            step="0.0001"
-            value={centroidLon}
-            onChange={(e) => setLon(e.target.value)}
+            label="Adjourns at"
+            type="datetime-local"
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+            required
           />
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Centroid lat"
+              type="number"
+              step="0.0001"
+              value={centroidLat}
+              onChange={(e) => setLat(e.target.value)}
+              hint="Optional. Heatmap centre."
+            />
+            <Input
+              label="Centroid lon"
+              type="number"
+              step="0.0001"
+              value={centroidLon}
+              onChange={(e) => setLon(e.target.value)}
+            />
+          </div>
 
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
+          {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-        <div className="mt-3 flex gap-3">
-          <Button type="submit" variant="primary" loading={create.isPending}>
-            Create session
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => router.back()}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </div>
+          <div className="mt-3 flex flex-col gap-2">
+            <Button type="submit" variant="primary" size="lg" loading={create.isPending} fullWidth>
+              Create session
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => router.back()} fullWidth>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </div>
+    </AppShell>
   );
 }

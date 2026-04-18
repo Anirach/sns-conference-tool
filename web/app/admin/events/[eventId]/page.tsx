@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { adminApi } from "@/lib/api/admin";
+import { AppShell } from "@/components/layout/AppShell";
 import { StatCard } from "@/components/admin/StatCard";
 import { VenueHeatmap } from "@/components/admin/VenueHeatmap";
 import { AdminTable, type ColumnDef } from "@/components/admin/Table";
@@ -44,32 +45,22 @@ export default function AdminEventDetailPage() {
       key: "name",
       header: "Fellow",
       cell: (r) => (
-        <span>
-          {r.firstName ?? "—"} {r.lastName ?? ""}
-        </span>
+        <div>
+          <p className="text-sm">
+            {r.firstName ?? "—"} {r.lastName ?? ""}
+          </p>
+          <p className="mt-0.5 text-xs text-foreground/60">{r.institution ?? "—"}</p>
+        </div>
       )
-    },
-    { key: "inst", header: "Institution", cell: (r) => r.institution ?? "—" },
-    {
-      key: "pos",
-      header: "Position",
-      cell: (r) =>
-        r.lastLat && r.lastLon ? (
-          <code className="text-xs text-foreground/60">
-            {r.lastLat.toFixed(4)}, {r.lastLon.toFixed(4)}
-          </code>
-        ) : (
-          <span className="text-xs text-foreground/40">no fix</span>
-        )
     },
     {
       key: "update",
-      header: "Last update",
+      header: "Last fix",
       cell: (r) =>
         r.lastUpdate ? (
           <span className="text-xs tabular-nums">{new Date(r.lastUpdate).toLocaleTimeString()}</span>
         ) : (
-          "—"
+          <span className="text-xs text-foreground/40">—</span>
         )
     },
     { key: "radius", header: "Radius", align: "right", cell: (r) => `${r.selectedRadius} m` }
@@ -78,57 +69,43 @@ export default function AdminEventDetailPage() {
   const detail = detailQ.data;
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <AppShell title="Session" eyebrow="The Registry" showBack>
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <header className="mb-5 hairline-b pb-5">
           <p className="eyebrow text-brass-500">Session</p>
-          <h2 className="mt-2 font-serif text-3xl">
-            {detail ? detail.name : <span className="text-foreground/30">…</span>}
+          <h2 className="mt-2 font-serif text-3xl leading-tight">
+            {detail ? <span className="italic">{detail.name}</span> : <span className="text-foreground/30">…</span>}
           </h2>
-          <p className="mt-1 font-serif text-sm italic text-muted-foreground">
-            {detail?.venue} · cipher <code className="not-italic">{detail?.qrCode}</code>
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {confirmDelete ? (
-            <>
-              <Button variant="danger" loading={deleteEvent.isPending} onClick={() => deleteEvent.mutate()}>
-                Confirm adjournment
-              </Button>
-              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="mr-2 h-4 w-4" /> Adjourn permanently
-            </Button>
-          )}
-        </div>
-      </header>
+          {detail ? (
+            <p className="mt-1 font-serif text-sm italic text-muted-foreground">
+              {detail.venue} · cipher <code className="not-italic">{detail.qrCode}</code>
+            </p>
+          ) : null}
+        </header>
 
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Fellows in residence" value={detail?.participantCount ?? 0} />
-        <StatCard label="Affinities" value={detail?.matchCount ?? 0} />
-        <StatCard label="Correspondence" value={detail?.messageCount ?? 0} />
-        <StatCard
-          label="Status"
-          value={detail?.expired ? "Adjourned" : "In residence"}
-          accent={detail?.expired ? "warn" : "default"}
-        />
-      </section>
+        <section className="mb-6 grid grid-cols-2 gap-3">
+          <StatCard label="In residence" value={detail?.participantCount ?? 0} />
+          <StatCard label="Affinities" value={detail?.matchCount ?? 0} />
+          <StatCard label="Correspondence" value={detail?.messageCount ?? 0} />
+          <StatCard
+            label="Status"
+            value={detail?.expired ? "Adjourned" : "Active"}
+            accent={detail?.expired ? "warn" : "default"}
+          />
+        </section>
 
-      <section className="mb-6 grid gap-6 md:grid-cols-[320px_1fr]">
-        <div>
-          <h3 className="eyebrow mb-2 text-brass-500">Venue heatmap</h3>
+        <section className="mb-6">
+          <h3 className="eyebrow mb-3 text-brass-500">Venue heatmap</h3>
           <VenueHeatmap
             points={heatQ.data ?? []}
             centroidLat={detail?.centroidLat}
             centroidLon={detail?.centroidLon}
+            size={300}
           />
-        </div>
-        <div>
-          <h3 className="eyebrow mb-2 text-brass-500">Fellows present</h3>
+        </section>
+
+        <section className="mb-6">
+          <h3 className="eyebrow mb-3 text-brass-500">Fellows present</h3>
           <AdminTable
             columns={cols}
             rows={partQ.data?.items ?? []}
@@ -140,8 +117,34 @@ export default function AdminEventDetailPage() {
             onRowClick={(r) => router.push(`/admin/users/${r.userId}`)}
             emptyTitle="No-one has joined yet"
           />
-        </div>
-      </section>
-    </div>
+        </section>
+
+        <section className="mt-8">
+          {confirmDelete ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-red-700">
+                Adjourning permanently will cascade-delete every participation, affinity, and message.
+              </p>
+              <Button
+                variant="danger"
+                size="lg"
+                loading={deleteEvent.isPending}
+                onClick={() => deleteEvent.mutate()}
+                fullWidth
+              >
+                Confirm adjournment
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmDelete(false)} fullWidth>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setConfirmDelete(true)} fullWidth>
+              <Trash2 className="mr-2 h-4 w-4" /> Adjourn permanently
+            </Button>
+          )}
+        </section>
+      </div>
+    </AppShell>
   );
 }

@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi, type AdminUserSummary } from "@/lib/api/admin";
 import type { Role } from "@/lib/fixtures/types";
+import { AppShell } from "@/components/layout/AppShell";
+import { AdminSectionNav } from "@/components/admin/AdminSectionNav";
 import { AdminTable, type ColumnDef } from "@/components/admin/Table";
 import { Input } from "@/components/ui/Input";
 
@@ -26,14 +28,14 @@ export default function AdminUsersListPage() {
       header: "Fellow",
       cell: (r) => (
         <div>
-          <p className="font-serif text-base">
+          <p className="font-serif text-sm">
             {r.firstName ?? ""} {r.lastName ?? ""}
           </p>
-          <p className="text-xs text-foreground/60">{r.email}</p>
+          <p className="mt-0.5 text-xs text-foreground/60">{r.email}</p>
+          {r.institution ? <p className="text-xs text-foreground/40">{r.institution}</p> : null}
         </div>
       )
     },
-    { key: "inst", header: "Institution", cell: (r) => r.institution ?? "—" },
     {
       key: "role",
       header: "Role",
@@ -55,75 +57,73 @@ export default function AdminUsersListPage() {
         ) : (
           <span className="text-xs text-brand-700">active</span>
         )
-    },
-    {
-      key: "joined",
-      header: "Joined",
-      align: "right",
-      cell: (r) => (
-        <span className="text-xs tabular-nums text-foreground/60">
-          {new Date(r.createdAt).toLocaleDateString()}
-        </span>
-      )
     }
   ];
 
   return (
-    <div>
-      <header className="mb-6">
-        <p className="eyebrow text-brass-500">The Roster</p>
-        <h2 className="mt-2 font-serif text-3xl">Fellows</h2>
-      </header>
+    <AppShell title="Fellows" eyebrow="The Registry">
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <AdminSectionNav />
 
-      <div className="mb-4 grid gap-3 md:grid-cols-[2fr_1fr_1fr]">
-        <Input
-          placeholder="Search by email…"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(0);
-          }}
+        <header className="mb-5 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">The roster</p>
+          <h2 className="mt-2 font-serif text-3xl leading-tight">
+            <span className="italic">Fellows</span>
+          </h2>
+        </header>
+
+        <div className="mb-4 flex flex-col gap-3">
+          <Input
+            placeholder="Search by email…"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(0);
+            }}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <select
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value as Role | "");
+                setPage(0);
+              }}
+              className="hairline h-11 rounded-sm bg-card px-3 text-sm font-serif"
+            >
+              <option value="">All roles</option>
+              <option value="USER">User</option>
+              <option value="ORGANIZER">Organizer</option>
+              <option value="ADMIN">Admin</option>
+              <option value="SUPER_ADMIN">Super admin</option>
+            </select>
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as "" | "active" | "suspended" | "deleted");
+                setPage(0);
+              }}
+              className="hairline h-11 rounded-sm bg-card px-3 text-sm font-serif"
+            >
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+              <option value="deleted">Deleted</option>
+            </select>
+          </div>
+        </div>
+
+        <AdminTable
+          columns={cols}
+          rows={data?.items ?? []}
+          total={data?.total ?? 0}
+          page={page}
+          size={25}
+          loading={isLoading}
+          rowKey={(r) => r.userId}
+          onPageChange={setPage}
+          onRowClick={(r) => router.push(`/admin/users/${r.userId}`)}
         />
-        <select
-          value={role}
-          onChange={(e) => {
-            setRole(e.target.value as Role | "");
-            setPage(0);
-          }}
-          className="hairline h-11 rounded-sm bg-card px-3 text-sm"
-        >
-          <option value="">All roles</option>
-          <option value="USER">User</option>
-          <option value="ORGANIZER">Organizer</option>
-          <option value="ADMIN">Admin</option>
-          <option value="SUPER_ADMIN">Super admin</option>
-        </select>
-        <select
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value as "" | "active" | "suspended" | "deleted");
-            setPage(0);
-          }}
-          className="hairline h-11 rounded-sm bg-card px-3 text-sm"
-        >
-          <option value="">Any status</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="deleted">Deleted</option>
-        </select>
       </div>
-
-      <AdminTable
-        columns={cols}
-        rows={data?.items ?? []}
-        total={data?.total ?? 0}
-        page={page}
-        size={25}
-        loading={isLoading}
-        rowKey={(r) => r.userId}
-        onPageChange={setPage}
-        onRowClick={(r) => router.push(`/admin/users/${r.userId}`)}
-      />
-    </div>
+    </AppShell>
   );
 }

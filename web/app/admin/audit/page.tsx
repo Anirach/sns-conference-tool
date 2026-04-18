@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi, type AdminAuditEntry } from "@/lib/api/admin";
+import { AppShell } from "@/components/layout/AppShell";
+import { AdminSectionNav } from "@/components/admin/AdminSectionNav";
 import { AdminTable, type ColumnDef } from "@/components/admin/Table";
 import { Input } from "@/components/ui/Input";
 
@@ -31,88 +33,79 @@ export default function AdminAuditPage() {
       key: "when",
       header: "When",
       cell: (r) => (
-        <span className="text-xs tabular-nums">{new Date(r.createdAt).toLocaleString()}</span>
+        <span className="text-xs tabular-nums text-foreground/60">
+          {new Date(r.createdAt).toLocaleString()}
+        </span>
       )
     },
-    { key: "action", header: "Action", cell: (r) => <code className="text-xs">{r.action}</code> },
     {
-      key: "actor",
-      header: "Actor",
-      cell: (r) =>
-        r.actorUserId ? (
-          <code className="text-xs text-foreground/60">{r.actorUserId.substring(0, 8)}…</code>
-        ) : (
-          <span className="text-xs text-foreground/40">—</span>
-        )
-    },
-    {
-      key: "resource",
-      header: "Resource",
-      cell: (r) =>
-        r.resourceType ? (
-          <span className="text-xs text-foreground/80">
-            {r.resourceType}/{r.resourceId?.substring(0, 8)}…
-          </span>
-        ) : (
-          "—"
-        )
-    },
-    {
-      key: "payload",
-      header: "Payload",
-      cell: (r) =>
-        r.payload ? (
-          <code className="text-xs text-foreground/50">{r.payload.substring(0, 60)}</code>
-        ) : (
-          <span className="text-xs text-foreground/40">—</span>
-        )
+      key: "action",
+      header: "Action",
+      cell: (r) => (
+        <div>
+          <code className="text-xs">{r.action}</code>
+          {r.actorUserId ? (
+            <p className="mt-0.5 text-[10px] text-foreground/40">
+              actor {r.actorUserId.substring(0, 8)}…
+            </p>
+          ) : null}
+        </div>
+      )
     }
   ];
 
   return (
-    <div>
-      <header className="mb-6">
-        <p className="eyebrow text-brass-500">The immutable record</p>
-        <h2 className="mt-2 font-serif text-3xl">Ledger</h2>
-      </header>
+    <AppShell title="Ledger" eyebrow="The Registry">
+      <div className="flex-1 px-5 pt-6 pb-8">
+        <AdminSectionNav />
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
-        <Input
-          placeholder="Actor user id (UUID)…"
-          value={actor}
-          onChange={(e) => {
-            setActor(e.target.value);
-            setPage(0);
-          }}
-        />
-        <Input
-          placeholder="Action (e.g. auth.login.failure)…"
-          value={action}
-          onChange={(e) => {
-            setAction(e.target.value);
-            setPage(0);
-          }}
-        />
-        <Input
-          type="datetime-local"
-          value={since}
-          onChange={(e) => {
-            setSince(e.target.value);
-            setPage(0);
-          }}
+        <header className="mb-5 hairline-b pb-5">
+          <p className="eyebrow text-brass-500">The immutable record</p>
+          <h2 className="mt-2 font-serif text-3xl leading-tight">
+            <span className="italic">Ledger</span>
+          </h2>
+        </header>
+
+        <div className="mb-4 flex flex-col gap-3">
+          <Input
+            placeholder="Actor user id (UUID)…"
+            value={actor}
+            onChange={(e) => {
+              setActor(e.target.value);
+              setPage(0);
+            }}
+          />
+          <Input
+            placeholder="Action (e.g. auth.login.failure)…"
+            value={action}
+            onChange={(e) => {
+              setAction(e.target.value);
+              setPage(0);
+            }}
+          />
+          <Input
+            type="datetime-local"
+            value={since}
+            onChange={(e) => {
+              setSince(e.target.value);
+              setPage(0);
+            }}
+          />
+        </div>
+
+        <AdminTable
+          columns={cols}
+          rows={data?.items ?? []}
+          total={data?.total ?? 0}
+          page={page}
+          size={50}
+          loading={isLoading}
+          rowKey={(r) => r.id}
+          onPageChange={setPage}
+          emptyTitle="No entries"
+          emptyDescription="Loosen the filters to see more of the ledger."
         />
       </div>
-
-      <AdminTable
-        columns={cols}
-        rows={data?.items ?? []}
-        total={data?.total ?? 0}
-        page={page}
-        size={50}
-        loading={isLoading}
-        rowKey={(r) => r.id}
-        onPageChange={setPage}
-      />
-    </div>
+    </AppShell>
   );
 }
