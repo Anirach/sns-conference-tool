@@ -52,6 +52,28 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  web:
+    # Next.js dev server in a container — preserves HMR via the bind mount.
+    # `docker compose --profile web up` to start; pair with `--profile backend` for the
+    # whole stack on Docker Desktop with no host Node/pnpm needed.
+    profiles: ["web"]
+    build:
+      context: ../web
+      dockerfile: Dockerfile.dev
+    container_name: sns-web
+    environment:
+      # When backend is also up, Next's rewrite proxies /api/* server-side.
+      BACKEND_PROXY_TARGET: http://backend:8080
+      NEXT_PUBLIC_MOCK_API: "1"
+      NEXT_PUBLIC_API_BASE: /api
+      WATCHPACK_POLLING: "true"  # bind-mount on macOS / Windows uses polling for HMR
+    volumes:
+      - ../web:/app
+      - /app/node_modules     # keep image's node_modules; don't shadow with empty host dir
+      - /app/.next            # ditto for the Next build cache
+    ports:
+      - "3000:3000"
+
   backend:
     # Optional — only builds when the backend/ Gradle project is present (Phase 1+).
     # Use `docker compose --profile backend up` to start.

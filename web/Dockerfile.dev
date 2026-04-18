@@ -1,0 +1,26 @@
+# Dev-mode container for the Next.js frontend.
+#
+# This image is for `docker compose --profile web up` — it runs the Next.js dev server
+# (next dev) so HMR + fast refresh keep working while the project source is bind-mounted
+# from the host. For production deploys see deploy-web.yml (S3 + CloudFront), not this file.
+#
+# Two-stage build: stage 1 hydrates pnpm + node_modules in the image (so a cold container
+# start doesn't re-resolve every dependency); stage 2 is the runtime that next dev runs in.
+
+FROM node:22-alpine AS deps
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9 --activate
+COPY package.json ./
+# pnpm-lock.yaml is intentionally not committed in this repo, so the cache layer is
+# only as good as package.json — that's fine for dev.
+RUN pnpm install --prefer-frozen-lockfile=false
+
+FROM node:22-alpine AS dev
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9 --activate
+# Bring the resolved node_modules forward; the bind mount in compose overlays src/.
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+ENV NEXT_TELEMETRY_DISABLED=1
+CMD ["pnpm", "dev"]
