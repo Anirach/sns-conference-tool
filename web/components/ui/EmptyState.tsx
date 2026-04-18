@@ -1,7 +1,7 @@
 "use client";
 
 import { LucideIcon } from "lucide-react";
-import { ReactNode } from "react";
+import { createElement, isValidElement, ReactNode } from "react";
 import { Button } from "./Button";
 
 interface EmptyStateProps {
@@ -17,11 +17,10 @@ interface EmptyStateProps {
 
 function renderIcon(icon: EmptyStateProps["icon"]): ReactNode {
   if (!icon) return null;
-  if (typeof icon === "function") {
-    const Icon = icon as LucideIcon;
-    return <Icon className="h-7 w-7" strokeWidth={1.4} />;
-  }
-  return icon;
+  if (isValidElement(icon)) return icon;
+  // Lucide icons are React.forwardRef components — typeof is "object", not "function".
+  // Treat anything that isn't already a JSX element as a component type and instantiate it.
+  return createElement(icon as LucideIcon, { className: "h-7 w-7", strokeWidth: 1.4 });
 }
 
 export function EmptyState({

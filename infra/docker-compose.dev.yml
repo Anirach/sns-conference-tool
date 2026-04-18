@@ -64,7 +64,7 @@ services:
     environment:
       # When backend is also up, Next's rewrite proxies /api/* server-side.
       BACKEND_PROXY_TARGET: http://backend:8080
-      NEXT_PUBLIC_MOCK_API: "1"
+      NEXT_PUBLIC_MOCK_API: "0"
       NEXT_PUBLIC_API_BASE: /api
       WATCHPACK_POLLING: "true"  # bind-mount on macOS / Windows uses polling for HMR
     volumes:
