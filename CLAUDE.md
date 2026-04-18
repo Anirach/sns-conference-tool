@@ -42,7 +42,17 @@ Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123
 
 ### Management console
 
-A separate route group at [web/app/admin/](web/app/admin/) gives admins a sidebar-shell dashboard distinct from the participant `AppShell`. Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backend/app/src/main/java/com/sns/app/admin/) — `AdminEventController` (CRUD + venue heatmap), `AdminUserController` (paged list + dossier + suspend/role/delete; SUPER_ADMIN-only ops use `@PreAuthorize`), `AdminAuditController` (paged search over the immutable audit log), `AdminOpsController` (push outbox queue + tile-grid metrics). Flyway V10 adds the `role` enum + `suspended_at` column on `users`. `SnsJwtService` embeds the role claim; `SecurityConfig` maps it to `ROLE_<name>` authorities and gates `/api/admin/**` on `hasAnyRole("ADMIN","SUPER_ADMIN")`. `AuthService.login` refuses suspended accounts with the same generic 401 (audit row distinguishes via `auth.login.suspended`). When the participant app sees `useIsAdmin()` it surfaces a small "Registry" pill in `AppBar` linking to `/admin`.
+Frontend route group at [web/app/admin/](web/app/admin/) shares the participant `AppShell` (cream `mobile-frame`, top `AppBar`, persistent `BottomTabBar`) — the only difference is a horizontal `AdminSectionNav` of pills below the page header for moving between admin sub-sections. The bottom tab bar grows from 4 to 5 tabs when [`useIsAdmin()`](web/lib/state/authStore.ts) is true; the 5th "Registry" tab is the canonical entry to `/admin`. Admins still land on the participant home (`/events/join`) on login.
+
+Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backend/app/src/main/java/com/sns/app/admin/) — `AdminEventController` (CRUD + venue heatmap), `AdminUserController` (paged list + dossier + suspend/role/delete; SUPER_ADMIN-only ops use `@PreAuthorize`), `AdminAuditController` (paged search over the immutable audit log), `AdminOpsController` (push outbox queue + tile-grid metrics). Flyway V10 adds the `role` enum + `suspended_at` column on `users`. `SnsJwtService` embeds the role claim; `SecurityConfig` maps it to `ROLE_<name>` authorities and gates `/api/admin/**` on `hasAnyRole("ADMIN","SUPER_ADMIN")`. `AuthService.login` refuses suspended accounts with the same generic 401 (audit row distinguishes via `auth.login.suspended`).
+
+### Cross-module enrichment notes
+
+`/api/chats` returns enriched [`ChatDtos.ChatThread`](backend/chat/src/main/java/com/sns/chat/api/dto/ChatDtos.java) rows — `otherName`, `otherInstitution`, `otherPictureUrl`, `lastMessagePreview`, `unread` — built by [`ChatService.listThreads`](backend/chat/src/main/java/com/sns/chat/app/ChatService.java) which joins the per-thread head messages against `ProfileRepository` and counts unread per (event, peer) tuple. `:chat` `api`-depends on `:profile` for this; participant module deps remain acyclic.
+
+### Frontend auth quirks
+
+[`web/lib/api/axios.ts`](web/lib/api/axios.ts) does **not** attach the bearer to URLs matching `/auth/*`. Reason: a stale JWT in localStorage (e.g. from before a dev backend restart that rotated the ephemeral keypair) makes the resource-server filter reject `POST /auth/login` with 401 *before* the permitAll login controller runs — the user sees their valid credentials get refused with no obvious cause.
 
 ### Mobile (`cd mobile`)
 ```bash

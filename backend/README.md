@@ -100,6 +100,29 @@ Dev-mode overrides:
 - The same flag activates `DemoDataKeepalive` — a `@Scheduled(fixedDelay=60s)` job that refreshes any `participations.last_update` older than 4 minutes back to `now()` and clears the `vicinity` cache, so the seeded fellows stay inside `VicinityService`'s 5-minute freshness filter indefinitely (the Fellows screen never goes blank).
 - `SNS_ADMIN_EMAIL` (`sns.admin.bootstrap-email`): when set, `AdminBootstrap` promotes the matching user to `SUPER_ADMIN` on every boot (idempotent). `ProductionSecretsCheck` refuses to start under `prod` when unset.
 
+## Admin API
+
+Gated by `SecurityConfig` `.requestMatchers("/api/admin/**").hasAnyRole("ADMIN","SUPER_ADMIN")`. Role comes from the JWT `role` claim issued by `SnsJwtService`. SUPER_ADMIN-only operations (role change, hard delete) are enforced inside the service plus a `@PreAuthorize` on the controller method.
+
+| Path | Method(s) | Notes |
+|------|-----------|-------|
+| `/api/admin/events` | GET (paged + `q`), POST | List / create. POST generates the QR hash via `QrCodeService.hash` and refuses 409 on cipher collisions. |
+| `/api/admin/events/{id}` | GET, PUT, DELETE | Detail / edit / hard delete (FK cascades to participations + matches + chat messages). |
+| `/api/admin/events/{id}/participants` | GET (paged) | Profile-joined participation list with last position + last update. |
+| `/api/admin/events/{id}/heatmap` | GET | `[{lat, lon, lastUpdate}]` for the venue scatter view. |
+| `/api/admin/users` | GET (paged + `q` / `role` / `status`) | Email substring search; status = `active|suspended|deleted`. |
+| `/api/admin/users/{id}` | GET, DELETE (`?hard=true`) | Full dossier (profile + interests + joined events + match/chat counts + recent ledger). Soft-delete by default; `?hard=true` requires SUPER_ADMIN and refuses to wipe the last super-admin. |
+| `/api/admin/users/{id}/{suspend,unsuspend}` | POST | `suspended_at` flip; suspended users get the same generic 401 on login as bad-password. |
+| `/api/admin/users/{id}/role` | POST | SUPER_ADMIN-only; refuses to demote the last super-admin. |
+| `/api/admin/audit` | GET (paged + `actor` / `action` / `since` / `until`) | Read-only over the immutable `audit_log` table. |
+| `/api/admin/ops/outbox` | GET (paged + `status`) | Push outbox queue. |
+| `/api/admin/ops/outbox/{id}/retry` | POST | Flips a row back to PENDING; the existing `@Scheduled` drain picks it up. |
+| `/api/admin/ops/metrics` | GET | Tile-grid payload: user counts, active/expired events, outbox by status, match counts, audit-24h. |
+
+## Cross-module enrichment
+
+- `/api/chats` returns enriched [`ChatDtos.ChatThread`](chat/src/main/java/com/sns/chat/api/dto/ChatDtos.java) rows (`otherName`, `otherInstitution`, `otherPictureUrl`, `lastMessagePreview`, `unread`) — built by `ChatService.listThreads` joining the per-thread head against `ProfileRepository` and counting unread messages per (event, peer). `:chat` `api`-depends on `:profile` for this.
+
 ## End-to-end smoke (curl)
 
 ```bash

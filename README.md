@@ -265,7 +265,9 @@ A companion `DemoDataKeepalive` (also gated on `sns.dev.seed-demo-data`) bumps `
 
 ### Management console (`/admin`)
 
-Alex Chen is also seeded as `SUPER_ADMIN` (Lukas Svensson and Rajesh Iyer get `ADMIN`). Once logged in, a small **Registry** pill appears in the top-right of the participant app — click it (or browse to http://localhost:3000/admin) to enter the admin console.
+Alex Chen is also seeded as `SUPER_ADMIN` (Lukas Svensson and Rajesh Iyer get `ADMIN`). When the bottom tab bar detects an admin role it grows from 4 tabs to 5 — the new **Registry** tab takes you to the management console. Admins still land on the participant home (`/events/join`) on login like everyone else.
+
+The console shares the participant app's Editorial Ivory chrome (cream `mobile-frame`, top `AppBar`, hairline dividers, brass accents) and keeps the bottom tab bar visible — one tap returns to Discover / Fellows / Letters / Study at any time. A horizontal section nav inside the page lets you move between admin sub-sections.
 
 | Section | What it does |
 |---------|--------------|
