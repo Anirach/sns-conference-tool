@@ -13,7 +13,12 @@ public final class PiiScrubber {
     private static final Pattern EMAIL = Pattern.compile(
         "\\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})\\b"
     );
-    private static final Pattern JWT = Pattern.compile("\\b[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b");
+    // JWT-shaped: three base64url segments where each segment is at least 8 chars and the
+    // whole string is at least ~80 chars. Stops short of matching Java class FQNs like
+    // `com.sns.app.config.RateLimitFilter` which would otherwise be redacted as JWTs.
+    private static final Pattern JWT = Pattern.compile(
+        "\\b[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}\\b"
+    );
     private static final Pattern BEARER = Pattern.compile(
         "(?i)(bearer\\s+)[A-Za-z0-9._-]+"
     );

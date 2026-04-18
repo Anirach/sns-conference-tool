@@ -10,4 +10,5 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-validation")
     api("org.hibernate.orm:hibernate-spatial")
     api("org.locationtech.jts:jts-core:1.19.0")
+    api("io.micrometer:micrometer-core")
 }

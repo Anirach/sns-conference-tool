@@ -2,6 +2,7 @@ package com.sns.identity.api.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
@@ -21,7 +22,7 @@ public final class AuthDtos {
     public record VerifyResponse(boolean verified, UUID verificationToken) {}
 
     public record CompleteRequest(
-        @NotBlank UUID verificationToken,
+        @NotNull UUID verificationToken,
         @NotBlank String firstName,
         @NotBlank String lastName,
         String academicTitle,

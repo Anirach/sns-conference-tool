@@ -10,5 +10,6 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-data-jpa")
     api("org.springframework.boot:spring-boot-starter-mail")
     api("com.nimbusds:nimbus-jose-jwt:9.40")
-    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+    api("io.hypersistence:hypersistence-utils-hibernate-63:3.9.0")
+    api("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
 }

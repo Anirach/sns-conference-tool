@@ -71,9 +71,14 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/conf
       SPRING_DATASOURCE_USERNAME: conf
       SPRING_DATASOURCE_PASSWORD: conf
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      REDISSON_ADDRESS: redis://redis:6379
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       VERIFICATION_DEV_MODE: "true"
+      CHAT_RELAY: redis
+      RATE_LIMIT_BACKEND: memory
       SERVER_PORT: "8080"
     ports:
       - "8080:8080"

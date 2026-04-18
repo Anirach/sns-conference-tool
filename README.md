@@ -421,8 +421,8 @@ erDiagram
     users ||--o{ sns_links : links
     users ||--o{ audit_log : "actor of"
     events ||--o{ participations : hosts
-    events ||--o{ similarity_matches : scoped to
-    events ||--o{ chat_messages : scoped to
+    events ||--o{ similarity_matches : "scoped to"
+    events ||--o{ chat_messages : "scoped to"
 
     users {
         uuid user_id PK

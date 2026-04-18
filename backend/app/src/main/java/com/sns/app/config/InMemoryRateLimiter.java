@@ -4,17 +4,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
  * Process-local fixed-window limiter. Each (bucket, key) gets its own sliding hour window.
- * Enabled by default or when {@code sns.rate-limit.backend=memory}.
+ * Enabled by default or when {@code sns.rate-limit.backend=memory}. Mutually exclusive with
+ * {@link RedissonRateLimiter} (which activates on {@code redis}) — no @ConditionalOnMissingBean
+ * needed.
  */
 @Component
 @ConditionalOnProperty(name = "sns.rate-limit.backend", havingValue = "memory", matchIfMissing = true)
-@ConditionalOnMissingBean(RateLimiter.class)
 public class InMemoryRateLimiter implements RateLimiter {
 
     private final ConcurrentMap<String, Window> windows = new ConcurrentHashMap<>();

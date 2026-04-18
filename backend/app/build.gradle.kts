@@ -43,7 +43,7 @@ dependencies {
     implementation("com.eatthepath:pushy:0.15.4")
     implementation("org.apache.opennlp:opennlp-tools:2.3.3")
     implementation("org.hibernate.orm:hibernate-spatial")
-    implementation("com.hypersistence:hypersistence-utils-hibernate-63:3.9.0")
+    implementation("io.hypersistence:hypersistence-utils-hibernate-63:3.9.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
