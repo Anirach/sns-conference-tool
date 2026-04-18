@@ -19,7 +19,7 @@ A multi-platform application — web, mobile, backend — built end-to-end as a 
 2. [Architecture at a glance](#architecture-at-a-glance)
 3. [The canonical user flow](#the-canonical-user-flow)
 4. [Status](#status)
-5. [Quick start (10 minutes)](#quick-start-10-minutes)
+5. [Quick start](#quick-start) — Option A: all-in-Docker · Option B: host-side dev
 6. [Demo against the real backend](#demo-against-the-real-backend)
 7. [Repository layout](#repository-layout)
 8. [Backend module graph](#backend-module-graph)
@@ -204,24 +204,85 @@ See [CLAUDE.md › Environment gaps](CLAUDE.md#environment-gaps-cannot-be-done-f
 
 ---
 
-## Quick start (10 minutes)
+## Quick start
 
-### 1. Bring up dev infrastructure
+Two paths, depending on what you want.
+
+### Option A — All-in-Docker (5 minutes, zero host tooling beyond Docker)
+
+> **Prerequisites:** Docker Desktop. That's it. No host Node, Java, Gradle, or pnpm needed.
+
+One command brings up all six containers:
+
+```bash
+cd infra
+docker compose -f docker-compose.dev.yml --profile backend --profile web up -d --build
+```
+
+After ~3 minutes (cold build) you'll have:
+
+| Container | URL | Role |
+|---|---|---|
+| **sns-web** | http://localhost:3000 | Next.js 14 dev server (HMR via bind mount — edit `web/` on the host, page reloads) |
+| **sns-backend** | http://localhost:8080 | Spring Boot API. `/actuator/health`, `/.well-known/jwks.json`, `/swagger-ui.html` |
+| **sns-postgres** | localhost:5432 | PostGIS 15-3.4 — Flyway runs V1–V9 on first start |
+| **sns-redis** | localhost:6379 | cache + Pub/Sub + Redisson rate limiter |
+| **sns-minio** | http://localhost:9001 | S3 console — login `minio` / `miniosecret` |
+| **sns-mailhog** | http://localhost:8025 | inbox where verification TANs land (dev TAN is always `123456`) |
+
+Open http://localhost:3000 — the welcome page renders. By default the web app is in **MSW mock mode**, so every `/api/*` call is fake-served from `web/lib/fixtures/`. To switch to the real backend container, edit the `web` service in [`infra/docker-compose.dev.yml`](infra/docker-compose.dev.yml):
+
+```yaml
+environment:
+  NEXT_PUBLIC_MOCK_API: "0"   # was "1"
+```
+
+…then `docker compose -f docker-compose.dev.yml --profile web up -d web` again. Next.js's rewrite proxies `/api/*` to `http://backend:8080` server-side inside the compose network.
+
+**Common operations:**
+
+```bash
+# Tail logs from any container
+docker logs -f sns-backend
+docker logs -f sns-web
+
+# Restart just the backend after a Java change (rebuilds the bootJar)
+docker compose -f docker-compose.dev.yml --profile backend up -d --build backend
+
+# Restart just web (TS changes hot-reload automatically; only needed for env / config changes)
+docker compose -f docker-compose.dev.yml --profile web restart web
+
+# Bring everything down (data is preserved in named volumes)
+docker compose -f docker-compose.dev.yml --profile backend --profile web down
+
+# Wipe data too
+docker compose -f docker-compose.dev.yml --profile backend --profile web down -v
+```
+
+**Subset selection.** Profiles let you pick exactly what you want:
+
+```bash
+# Just the data-plane (Postgres + Redis + MinIO + MailHog) — no app
+docker compose -f docker-compose.dev.yml up -d
+
+# Data-plane + backend, run the web on the host with `pnpm dev` (Option B)
+docker compose -f docker-compose.dev.yml --profile backend up -d
+
+# Data-plane + web, no backend (web stays in MSW mock mode)
+docker compose -f docker-compose.dev.yml --profile web up -d
+```
+
+### Option B — Host-side dev (live JVM + Node, fast iteration on backend code)
+
+Use this when you're editing Java and want sub-second restart cycles via Spring DevTools, or you want to attach a debugger.
+
+#### B1. Bring up just the data plane
 
 ```bash
 cd infra && docker compose -f docker-compose.dev.yml up -d
 ```
 
-Boots:
-
-| Service | Port | Credentials |
-|---|---|---|
-| PostgreSQL + PostGIS | `5432` | `conf` / `conf` / `conf` |
-| Redis | `6379` | (none) |
-| MinIO (S3-compatible) | `9000`, `9001` (UI) | `minio` / `miniosecret` |
-| MailHog (SMTP catcher) | `1025`, `8025` (UI) | (none) |
-
-### 2. Run the backend
+#### B2. Run the backend on the host
 
 First-time only (needs system Gradle 8.10+ + Java 21):
 
@@ -237,7 +298,7 @@ Then:
 
 Backend at `http://localhost:8080`. The dev profile auto-seeds the `NEURIPS2026` event and accepts `123456` as the verification TAN.
 
-### 3. Run the web frontend
+#### B3. Run the web on the host
 
 ```bash
 cd web
@@ -245,15 +306,14 @@ pnpm install
 pnpm dev
 ```
 
-Opens at `http://localhost:3000`. By default MSW intercepts every `/api/*` call with fixtures; flip individual domains over to the real backend via:
+Opens at `http://localhost:3000`. To call the real backend instead of mocks, set in `web/.env.local`:
 
-```bash
-# web/.env.local
+```
 NEXT_PUBLIC_MOCK_API=1,-auth,-profile,-events,-interests,-matches,-chat,-devices,-sns
 BACKEND_PROXY_TARGET=http://localhost:8080
 ```
 
-### 4. (Optional) Run the mobile shell
+#### B4. (Optional) Run the mobile shell
 
 Prerequisites: Flutter 3.22+, Xcode (iOS) or Android SDK.
 
