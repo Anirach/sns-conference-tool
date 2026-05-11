@@ -260,6 +260,7 @@ Tiles turn **amber** when the value enters a warning band (e.g. > 50 outbox pend
 **Session detail** (`/admin/events/[id]`):
 - **Header**: name + venue + cipher.
 - **Stat tiles**: Fellows in residence · Affinities · Correspondence (chat messages) · Status.
+- **Cipher QR card**: shows the cipher plaintext above a scannable QR code (Editorial Ivory ink on cream paper). Two outline buttons — **PNG** downloads `<CIPHER>-qr.png` at 1024 × 1024 px on white background (≈ 8.7 cm at 300 dpi, ready for a conference badge); **SVG** downloads `<CIPHER>-qr.svg` for crisp scaling at any size. Both encode the plaintext cipher; participants can scan or type. Error-correction level H tolerates smudges or partial coverage on the printed badge.
 - **Venue heatmap**: inline SVG showing concentric 10/25/50 m rings centred on the venue with each fellow's position dotted. Useful for spotting clusters or stragglers.
 - **Fellows present** table: name + institution + last GPS fix time + selected radius. Tap a row to jump to that fellow's dossier.
 - **Adjourn permanently** button (at the bottom): tapping it shows a confirmation; confirming hard-deletes the event and cascades to participations, matches, and chat messages. *This cannot be undone.*

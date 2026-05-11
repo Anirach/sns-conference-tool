@@ -272,7 +272,7 @@ The console shares the participant app's Editorial Ivory chrome (cream `mobile-f
 | Section | What it does |
 |---------|--------------|
 | **Overview** | Tile-grid: total / active / suspended fellows, active vs. expired sessions, push outbox queue, audit-events-in-last-24h. Refreshes every 30 s. |
-| **Sessions** | List + create / edit / delete events. Click a row for the venue heatmap, fellows-in-attendance table, and adjourn-permanently button. |
+| **Sessions** | List + create / edit / delete events. Click a row for the cipher QR (with PNG / SVG download for badge printing), venue heatmap, fellows-in-attendance table, and adjourn-permanently button. |
 | **Fellows** | Paged list with email search + role / status filters. Drill in for a full dossier (interests, joined sessions, match count, recent ledger entries) plus suspend / reinstate / soft-delete / hard-delete + role-change controls. |
 | **Ledger** | Searchable view over the immutable `audit_log` (filter by actor UUID, action name, since-time). Read-only — the table is protected by a Postgres trigger (Flyway V9). |
 | **Apparatus** | Push outbox queue with status filter + per-row retry, plus the same tile-grid as Overview. |

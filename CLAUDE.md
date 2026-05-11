@@ -44,7 +44,7 @@ Dev-mode overrides: `VERIFICATION_DEV_MODE=true` makes the email TAN always `123
 
 Frontend route group at [web/app/admin/](web/app/admin/) shares the participant `AppShell` (cream `mobile-frame`, top `AppBar`, persistent `BottomTabBar`) — the only difference is a horizontal `AdminSectionNav` of pills below the page header for moving between admin sub-sections. The bottom tab bar grows from 4 to 5 tabs when [`useIsAdmin()`](web/lib/state/authStore.ts) is true; the 5th "Registry" tab is the canonical entry to `/admin`. Admins still land on the participant home (`/events/join`) on login.
 
-Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backend/app/src/main/java/com/sns/app/admin/) — `AdminEventController` (CRUD + venue heatmap), `AdminUserController` (paged list + dossier + suspend/role/delete; SUPER_ADMIN-only ops use `@PreAuthorize`), `AdminAuditController` (paged search over the immutable audit log), `AdminOpsController` (push outbox queue + tile-grid metrics). Flyway V10 adds the `role` enum + `suspended_at` column on `users`. `SnsJwtService` embeds the role claim; `SecurityConfig` maps it to `ROLE_<name>` authorities and gates `/api/admin/**` on `hasAnyRole("ADMIN","SUPER_ADMIN")`. `AuthService.login` refuses suspended accounts with the same generic 401 (audit row distinguishes via `auth.login.suspended`).
+Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backend/app/src/main/java/com/sns/app/admin/) — `AdminEventController` (CRUD + venue heatmap), `AdminUserController` (paged list + dossier + suspend/role/delete; SUPER_ADMIN-only ops use `@PreAuthorize`), `AdminAuditController` (paged search over the immutable audit log), `AdminOpsController` (push outbox queue + tile-grid metrics). Session detail also renders the cipher as a scannable QR via [`CipherQrCard`](web/components/admin/CipherQrCard.tsx) (client-side `qrcode` lib) with PNG (1024² @ 300 dpi) and SVG download buttons for badge printing — encodes the plaintext cipher; `EventService.join` accepts that form unchanged. Flyway V10 adds the `role` enum + `suspended_at` column on `users`. `SnsJwtService` embeds the role claim; `SecurityConfig` maps it to `ROLE_<name>` authorities and gates `/api/admin/**` on `hasAnyRole("ADMIN","SUPER_ADMIN")`. `AuthService.login` refuses suspended accounts with the same generic 401 (audit row distinguishes via `auth.login.suspended`).
 
 ### Cross-module enrichment notes
 
@@ -53,6 +53,8 @@ Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backen
 ### Frontend auth quirks
 
 [`web/lib/api/axios.ts`](web/lib/api/axios.ts) does **not** attach the bearer to URLs matching `/auth/*`. Reason: a stale JWT in localStorage (e.g. from before a dev backend restart that rotated the ephemeral keypair) makes the resource-server filter reject `POST /auth/login` with 401 *before* the permitAll login controller runs — the user sees their valid credentials get refused with no obvious cause.
+
+[`web/lib/api/mocks/init.ts`](web/lib/api/mocks/init.ts) auto-unregisters any `/mockServiceWorker.js` registration when `NEXT_PUBLIC_MOCK_API` resolves to zero domains. Reason: the MSW service worker persists across reloads / env changes and, once stranded without a handler table, intercepts fetches and surfaces as random 401s on `/api/auth/login`. The proactive unregister means flipping the env to `"0"` self-heals after one reload — no user-side DevTools dance.
 
 ### Mobile (`cd mobile`)
 ```bash
