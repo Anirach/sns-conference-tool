@@ -20,9 +20,14 @@ function VerifyInner() {
     setCode(value);
     setBusy(true);
     try {
-      await authApi.verify({ email, tan: value });
+      const { data } = await authApi.verify({ email, tan: value });
       toast({ title: "Cipher accepted", variant: "success" });
-      router.push(`/login?verified=1&email=${encodeURIComponent(email)}&next=complete`);
+      // Carry the verification token forward — /auth/complete needs it (one-shot, expires
+      // in 15 min). Encoded into the URL so a page refresh on the complete form keeps it.
+      router.push(
+        `/login?verified=1&email=${encodeURIComponent(email)}` +
+          `&next=complete&token=${encodeURIComponent(data.verificationToken)}`
+      );
     } catch {
       toast({ title: "Cipher refused", variant: "error" });
       setBusy(false);

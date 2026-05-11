@@ -11,6 +11,8 @@ export interface VerifyRequest {
 }
 
 export interface CompleteRegistrationRequest {
+  /** UUID returned by /auth/verify; required by the backend's @NotNull check. */
+  verificationToken: string;
   firstName: string;
   lastName: string;
   academicTitle: string;

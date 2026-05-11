@@ -34,6 +34,7 @@ function LoginInner() {
   const search = useSearchParams();
   const next = search.get("next");
   const verifiedEmail = search.get("email") ?? "";
+  const verificationToken = search.get("token") ?? "";
   const { toast } = useToast();
   const setSession = useAuthStore((s) => s.setSession);
   const [mode] = useState<"login" | "complete">(next === "complete" ? "complete" : "login");
@@ -61,9 +62,14 @@ function LoginInner() {
   }
 
   async function onComplete(values: CompleteValues) {
+    if (!verificationToken) {
+      toast({ title: "Verification token missing — please verify again", variant: "error" });
+      router.push("/register");
+      return;
+    }
     try {
-      const { data } = await authApi.complete(values);
-      await setSession(data);
+      const { data } = await authApi.complete({ ...values, verificationToken });
+      setSession(data);
       toast({ title: "Enrolment complete", variant: "success" });
       router.push("/interests");
     } catch {
