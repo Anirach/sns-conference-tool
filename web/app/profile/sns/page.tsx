@@ -2,13 +2,47 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Facebook, Linkedin } from "lucide-react";
+import { useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { profileApi } from "@/lib/api/profile";
-import { bridge } from "@/lib/bridge/client";
 import type { SnsLink, SnsProvider } from "@/lib/fixtures/types";
-import type { SnsLoginResult } from "@/lib/bridge/types";
+
+/**
+ * Opens an OAuth popup for the chosen provider. The backend's /api/sns/{provider}/start
+ * endpoint redirects through the provider's consent screen and the callback page closes
+ * itself with `window.opener.postMessage({ type: "sns.linked", provider })`.
+ */
+function openOauthPopup(provider: "facebook" | "linkedin"): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const popup = window.open(
+      `/api/sns/${provider}/start`,
+      `sns-oauth-${provider}`,
+      "width=520,height=720"
+    );
+    if (!popup) {
+      reject(new Error("Popup blocked — allow popups for this site and retry."));
+      return;
+    }
+    const listener = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "sns.linked" && e.data?.provider === provider) {
+        window.removeEventListener("message", listener);
+        resolve();
+      }
+    };
+    window.addEventListener("message", listener);
+    // Detect popup closed without success
+    const interval = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(interval);
+        window.removeEventListener("message", listener);
+        reject(new Error("Linking cancelled."));
+      }
+    }, 500);
+  });
+}
 
 export default function SnsLinksPage() {
   const qc = useQueryClient();
@@ -19,26 +53,38 @@ export default function SnsLinksPage() {
     queryFn: async () => (await profileApi.listSns()).data
   });
 
+  // After the popup closes successfully, refresh the linked-providers list from the backend.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "sns.linked") {
+        qc.invalidateQueries({ queryKey: ["sns"] });
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [qc]);
+
   const linkMut = useMutation({
     mutationFn: async (provider: SnsProvider) => {
       const provLower = provider.toLowerCase() as "facebook" | "linkedin";
-      const result = await bridge.call<SnsLoginResult>("sns.login", { provider: provLower });
-      return (
-        await profileApi.linkSns({
-          provider,
-          accessToken: result.accessToken,
-          providerUserId: result.providerUserId
-        })
-      ).data;
+      await openOauthPopup(provLower);
+      // Backend has already written the link via its callback; just refetch.
+      return (await profileApi.listSns()).data.find((l) => l.provider === provider) as SnsLink;
     },
     onSuccess: (link) => {
+      if (!link) return;
       qc.setQueryData<SnsLink[]>(["sns"], (prev = []) => {
         const without = prev.filter((l) => l.provider !== link.provider);
         return [...without, link];
       });
       toast({ title: `Linked ${link.provider.toLowerCase()}`, variant: "success" });
     },
-    onError: () => toast({ title: "Linking failed", variant: "error" })
+    onError: (e: unknown) =>
+      toast({
+        title: e instanceof Error ? e.message : "Linking failed",
+        variant: "error"
+      })
   });
 
   const unlinkMut = useMutation({

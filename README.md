@@ -2,14 +2,14 @@
 
 > **On-site networking for researchers.** Discover nearby conference attendees who share your interests, then chat with them in real time — without having to memorise badge names or hover at coffee tables.
 
-A multi-platform application — web, mobile, backend — built end-to-end as a reference implementation for [docs/SNS-system.md](docs/SNS-system.md). Designed for production: multi-pod horizontal scale, GDPR-compliant data lifecycle, audit trail, push notifications, and a security posture that refuses to boot if the dev defaults survive into prod.
+A responsive PWA built end-to-end as a reference implementation for [docs/SNS-system.md](docs/SNS-system.md). One Next.js codebase serves participants on iOS Safari, Android Chrome, and desktop browsers; install to the home screen for an app-like experience. Designed for production: multi-pod horizontal scale, GDPR-compliant data lifecycle, audit trail, and a security posture that refuses to boot if the dev defaults survive into prod.
 
 | | |
 |---|---|
-| **Status** | Production-ready code; awaits external creds (Firebase, OAuth apps, cluster) |
-| **Stack** | Next.js 14 + TypeScript · Flutter 3.22 · Spring Boot 3.3 / Java 21 · PostgreSQL 15 + PostGIS · Redis 7 · Kubernetes + Helm · Terraform |
-| **Code shape** | 9-module Gradle backend, 27 React pages, 8 native bridge services, 9 Flyway migrations |
-| **Tests** | Unit + Testcontainers integration + Playwright E2E + Flutter widget + k6 load |
+| **Status** | Production-ready code; awaits external creds (OAuth apps, AWS cluster) |
+| **Stack** | Next.js 14 + TypeScript (PWA) · Spring Boot 3.3 / Java 21 · PostgreSQL 15 + PostGIS · Redis 7 · Kubernetes + Helm · Terraform |
+| **Code shape** | 9-module Gradle backend, 27 React pages, 11 Flyway migrations |
+| **Tests** | Unit + Testcontainers integration + Playwright E2E + k6 load |
 
 ---
 
@@ -44,9 +44,8 @@ A conference participant opens the app on their phone, scans the QR code on thei
 
 ```mermaid
 flowchart LR
-    subgraph User devices
-        Web["Web<br/>(Next.js 14)"]
-        Mobile["Mobile<br/>(Flutter WebView<br/>+ JS bridge)"]
+    subgraph "User devices (browser)"
+        Web["Web / PWA<br/>(Next.js 14, install<br/>via Add to Home Screen)"]
     end
 
     subgraph "Backend pods (Spring Boot 3.3)"
@@ -56,7 +55,7 @@ flowchart LR
         InterestSvc["interest<br/>(TF / OpenNLP<br/>extractors)"]
         MatchingSvc["matching<br/>(cosine engine,<br/>incremental + sweep)"]
         ChatSvc["chat<br/>(STOMP/WS,<br/>RedisChatRelay)"]
-        NotifSvc["notification<br/>(SKIP-LOCKED outbox,<br/>FCM + APNs)"]
+        NotifSvc["notification<br/>(SKIP-LOCKED outbox,<br/>logging gateway v1)"]
         SnsSvc["sns<br/>(OAuth, AES-256-GCM<br/>token crypto)"]
     end
 
@@ -67,8 +66,6 @@ flowchart LR
     end
 
     subgraph "External"
-        FCM(("FCM"))
-        APNs(("APNs"))
         FB(("Facebook OAuth"))
         LI(("LinkedIn OAuth"))
     end
@@ -79,15 +76,11 @@ flowchart LR
         Loki[(Loki)]
     end
 
-    Web    -->|REST + STOMP| AuthSvc
-    Mobile -->|REST + STOMP| AuthSvc
-    Mobile -.->|"JS bridge<br/>(GPS, QR, push)"| Web
+    Web -->|REST + STOMP| AuthSvc
 
     AuthSvc & EventSvc & InterestSvc & MatchingSvc & ChatSvc & NotifSvc & SnsSvc --> PG
     EventSvc & ChatSvc & NotifSvc --> Redis
     InterestSvc --> S3
-    NotifSvc --> FCM
-    NotifSvc --> APNs
     SnsSvc --> FB
     SnsSvc --> LI
 
@@ -98,7 +91,7 @@ flowchart LR
 
 **Three observations from this diagram:**
 
-1. **The mobile app is a thin shell.** Flutter renders a WebView that loads the Next.js frontend; native capabilities reach the web layer through a JSON message bridge. One UI codebase serves both platforms.
+1. **One frontend codebase, no native shell.** The Next.js app is a responsive PWA that runs identically on iOS Safari, Android Chrome, and desktop. Camera (QR scan), file upload, geolocation, and OAuth all reach the browser directly via standard web APIs.
 2. **Every backend module talks to Postgres; only Event / Chat / Notification touch Redis.** This keeps the modules independently testable — only the realtime + cache paths need a Redis container.
 3. **No service-to-service HTTP.** The backend is a modular monolith with cross-module communication via Spring `ApplicationEvent`s — `MatchFound`, `ChatMessageSent`, `LocationUpdated`, `UserJoinedEvent`. New consumers subscribe; producers don't change.
 
@@ -163,7 +156,7 @@ sequenceDiagram
     N->>R: RedisChatRelay publish ws:chat:bucket:N
     R-->>C: every pod receives, locally addressed pods deliver
     C-->>U: peer's STOMP session receives /user/queue/chat
-    N->>FCM: outbox drain (SKIP LOCKED) → FcmPushGateway
+    N->>N: outbox drain (SKIP LOCKED) → LoggingPushGateway (Web Push deferred)
 ```
 
 ---
@@ -177,7 +170,7 @@ sequenceDiagram
 | **Auth** | RS256 JWT with `iss` + `aud` validation, rotating refresh with reuse-detection family revoke, BCrypt(12) + phantom-hash for unknown emails, constant-time TAN compare, `PasswordPolicy` (length, blocklist, email-equal), JWKS endpoint |
 | **Events + Matching** | PostGIS `ST_DWithin` vicinity (Redis-cached 10 s, event-evicted), TF / OpenNLP keyword extraction, **incremental** `recomputeForUser` (O(N)) + scheduled full sweep (O(N²)), HMAC-signed QR tokens alongside legacy hashes |
 | **Realtime chat** | STOMP/WS with JWT CONNECT auth, multi-pod fan-out via `RedisChatRelay` over 64 bucketed channels (no `PSUBSCRIBE`), idempotent send via `clientMessageId`, `@Valid` body validation |
-| **Push** | DB-backed outbox with `SELECT … FOR UPDATE SKIP LOCKED` claim, `PushGatewayRouter` EnumMap dispatch to `FcmPushGateway` / `ApnsPushGateway` / logging fallback |
+| **Push** | DB-backed outbox with `SELECT … FOR UPDATE SKIP LOCKED` claim, `PushGatewayRouter` → `LoggingPushGateway` (Web Push deferred to a follow-up; see *Environment gaps*) |
 | **SNS OAuth** | Facebook + LinkedIn link/callback/unlink, AES-256-GCM token crypto, scheduled enrichment job |
 | **GDPR** | `/api/users/me/export` ZIP across profile/interests/matches/chats/SNS, soft-delete + 30-day hard-delete cron, audit-log writes on every actionable path with DB-trigger immutability + 180-day prune |
 | **Rate limiting** | Buckets for register / login (per-IP + per-email) / refresh; in-memory or Redisson backend |
@@ -191,13 +184,10 @@ sequenceDiagram
 **Remaining work is environment-only:**
 
 ```
-[ ] flutter create — materialise mobile/ios + mobile/android
 [ ] gradle wrapper --gradle-version 8.10 — commit the wrapper jar
-[ ] dart run build_runner build — generate isar_db.g.dart
-[ ] Firebase project + google-services.json + APNs .p8 signing key
-[ ] Facebook + LinkedIn OAuth app registration
+[ ] Facebook + LinkedIn OAuth app registration (for SNS link feature)
 [ ] AWS account + Terraform state bucket + cluster provisioning
-[ ] Store submissions (App Store + Play Store)
+[ ] (Future) VAPID keypair + Web Push gateway implementation
 ```
 
 See [CLAUDE.md › Environment gaps](CLAUDE.md#environment-gaps-cannot-be-done-from-code-alone).
@@ -362,25 +352,15 @@ NEXT_PUBLIC_MOCK_API=1,-auth,-profile,-events,-interests,-matches,-chat,-devices
 BACKEND_PROXY_TARGET=http://localhost:8080
 ```
 
-#### B4. (Optional) Run the mobile shell
+#### B4. Install on your phone (PWA)
 
-Prerequisites: Flutter 3.22+, Xcode (iOS) or Android SDK.
+The dev server runs on http://localhost:3000. To use it from a phone on the same Wi-Fi:
 
-First-time only:
+1. Find your laptop's LAN IP (e.g. `192.168.1.42`) and hit `http://192.168.1.42:3000` in the phone browser. *(Service workers + Add-to-Home-Screen prompts work on `http://localhost` directly; for LAN URLs you'll need a real HTTPS terminator — out of scope for dev.)*
+2. **iOS Safari**: tap **Share → Add to Home Screen** → confirm. Launches in standalone mode (no browser chrome).
+3. **Android Chrome**: tap the address bar's **Install app** chip, or use the 3-dot menu → **Install app**.
 
-```bash
-cd mobile
-flutter create --platforms=android,ios --project-name=sns_mobile .
-dart run build_runner build --delete-conflicting-outputs
-```
-
-Then:
-
-```bash
-flutter pub get && flutter run
-```
-
-The Flutter shell loads the local Next.js dev server (Android emulator: `http://10.0.2.2:3000`; iOS sim: `http://localhost:3000`).
+For staging / prod, the existing terraform ALB+ACM provides HTTPS so PWA install works out of the box at the conference URL.
 
 ---
 
@@ -443,10 +423,8 @@ curl -sS -X DELETE -H "Authorization: Bearer $ACCESS" localhost:8080/api/users/m
 
 ```
 .
-├── web/                Next.js 14 (App Router). MSW contract + per-domain cutover toggle.
-├── mobile/             Flutter 3.22 WebView shell.
-│                       Bridge + native services: geolocator, mobile_scanner, file_picker,
-│                       firebase_messaging, flutter_facebook_auth, Isar.
+├── web/                Next.js 14 (App Router). Responsive PWA — manifest + offline shell;
+│                       MSW contract + per-domain cutover toggle. Camera QR via html5-qrcode.
 ├── backend/            Spring Boot 3.3 / Java 21 multi-module:
 │                       :app :common :identity :profile :event :interest :matching
 │                       :chat :notification :sns
@@ -674,20 +652,18 @@ Full reference: [docs/SECURITY.md](docs/SECURITY.md).
 flowchart LR
     PR["Pull request /<br/>push to main"]
     Contract["contract<br/>(openapi-diff.sh)"]
-    Security["security<br/>(pnpm audit,<br/>Gradle dep-check, ZAP)"]
+    Security["security<br/>(npm audit,<br/>Gradle dep-check, ZAP)"]
     Web["web<br/>(lint, typecheck,<br/>Playwright smoke)"]
-    Mobile["mobile<br/>(flutter analyze + test)"]
     Backend["backend<br/>(Gradle build +<br/>integrationTest)"]
     Merge["Merge to main"]
-    Deploy["deploy-{backend,web}.yml<br/>(GHCR + Helm; S3 + CloudFront)"]
+    Deploy["deploy-{backend,web}.yml<br/>(GHCR + Helm)"]
 
     PR --> Contract
     PR --> Security
     PR --> Web
-    PR --> Mobile
     PR --> Backend
 
-    Contract & Security & Web & Mobile & Backend --> Merge
+    Contract & Security & Web & Backend --> Merge
     Merge --> Deploy
     Deploy -.->|workflow_dispatch| ProdRollout["Manual prod approval"]
 ```
@@ -697,7 +673,6 @@ flowchart LR
 | **Backend unit** | JUnit 5 | `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`, `AesGcmCipherTest`, `PiiScrubberTest`, `PasswordPolicyTest`, `PushGatewayRouterTest` |
 | **Backend integration** | Testcontainers (Postgres + Redis) | `AuthIntegrationTest`, `EventAndMatchingIntegrationTest`, `ChatIntegrationTest`, `AuditLogIntegrationTest` — all extend `IntegrationTestBase` |
 | **Web E2E** | Playwright | `web/e2e/smoke.spec.ts` walks register → verify → complete → join → vicinity → chat |
-| **Mobile** | `flutter_test` | `mobile/test/bridge/js_bridge_test.dart` covers the dispatch table |
 | **Contract** | Bash + ripgrep | `tools/openapi-diff.sh` asserts every MSW route has a matching OpenAPI path |
 | **Load** | k6 | `infra/load/k6-vicinity.js` (500 RPS), `infra/load/k6-chat.js` (1000 WS at 10 msg/s) |
 | **Security** | `pnpm audit`, OWASP `dep-check`, ZAP baseline | Wired into the `security` CI job |
@@ -740,8 +715,6 @@ flowchart LR
 **Deploys.** GitHub Actions:
 - `deploy-backend.yml` builds + pushes to GHCR, runs `helm upgrade --install --wait`.
 - `deploy-web.yml` builds the Next.js bundle and syncs to S3 + CloudFront.
-- `deploy-mobile.yml` runs fastlane (Play internal track + TestFlight) — gated on `workflow_dispatch`.
-
 **Rollback.** `helm rollback sns <revision>`. The CronJob tripwire keeps the in-process hard-delete scheduler honest in case the JVM Quartz instance stalls.
 
 ---
@@ -754,7 +727,7 @@ flowchart LR
 | [CLAUDE.md](CLAUDE.md) | Contributor guide. Commands per layer, architecture deep-dive, environment gaps. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Key rotation procedures, hardening reference, residual risks, boot-time gate. |
 | [backend/README.md](backend/README.md) | Backend setup, Gradle commands, full configuration reference (~50 properties), `curl` walkthrough. |
-| [mobile/README.md](mobile/README.md) | Mobile setup, bridge service table, first-time provisioning checklist. |
+| [docs/User-Manual.md](docs/User-Manual.md) | End-user manual (participant + admin), with PWA install steps for iOS / Android. PDF: [docs/SNS-User-Manual.pdf](docs/SNS-User-Manual.pdf). |
 | [infra/load/README.md](infra/load/README.md) | k6 scenarios + run instructions. |
 | [infra/terraform/README.md](infra/terraform/README.md) | Terraform module + environment layout. |
 | [docs/runbooks/README.md](docs/runbooks/README.md) | On-call runbook index. |

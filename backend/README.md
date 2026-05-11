@@ -44,9 +44,9 @@ backend/
 │                   RedisChatRelay (Pub/Sub default) / InProcessChatRelay,
 │                   ChatWsController.
 ├── notification/   DeviceToken + PushOutbox entities, NotificationService drain,
-│                   PushGateway interface, PushGatewayRouter (@Primary),
-│                   FcmPushGateway (firebase-admin) + ApnsPushGateway (pushy)
-│                   + LoggingPushGateway fallback.
+│                   PushGateway interface, PushGatewayRouter (@Primary) →
+│                   LoggingPushGateway. Web Push deferred to v2 — outbox flows but
+│                   logs only.
 └── sns/            SnsController (link/callback/unlink), SnsService (OAuth exchange
                     with dev-stub fallback), SnsEnrichmentJob (@Scheduled),
                     AesGcmCipher (AES-256-GCM).
@@ -216,9 +216,6 @@ Container env (set in compose, override via `.env`):
 | `sns.admin.bootstrap-email` (`SNS_ADMIN_EMAIL`) | unset | Email to promote to `SUPER_ADMIN` at boot. Required in `prod`. |
 | `sns.matching.sweep-interval-ms` | `180000` | Scheduled recompute cadence |
 | `sns.push.drain-interval-ms` | `5000` | Outbox drain cadence |
-| `sns.push.fcm.credentials-json` | unset | Firebase service-account JSON; when set, registers `FcmPushGateway` |
-| `sns.push.fcm.project-id` | unset | Optional override |
-| `sns.push.apns.team-id` / `.key-id` / `.bundle-id` / `.signing-key-pem` / `.sandbox` | unset | When team-id set, registers `ApnsPushGateway` |
 | `sns.chat.relay` | `redis` | `redis` (Pub/Sub fan-out) or `inproc` (single-pod / tests) |
 | `sns.chat.relay-buckets` | `64` | Number of bucketed channels `RedisChatRelay` subscribes to |
 | `sns.rate-limit.backend` | `memory` | `memory` (in-process fixed-window) or `redis` (Redisson) |

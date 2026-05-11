@@ -39,8 +39,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("org.redisson:redisson-spring-boot-starter:3.34.1")
-    implementation("com.google.firebase:firebase-admin:9.3.0")
-    implementation("com.eatthepath:pushy:0.15.4")
     implementation("org.apache.opennlp:opennlp-tools:2.3.3")
     implementation("org.hibernate.orm:hibernate-spatial")
     implementation("io.hypersistence:hypersistence-utils-hibernate-63:3.9.0")

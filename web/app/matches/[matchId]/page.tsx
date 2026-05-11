@@ -13,8 +13,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { matchesApi } from "@/lib/api/events";
-import { bridge } from "@/lib/bridge/client";
+import { getItem, setItem } from "@/lib/native/storage";
 import type { Match } from "@/lib/fixtures/types";
+
+/** localStorage-backed "saved register" — replaces the old Isar-via-Flutter store. */
+function savedKey(matchId: string): string {
+  return `register.saved.${matchId}`;
+}
 
 export default function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -28,16 +33,13 @@ export default function MatchDetailPage() {
   });
 
   useEffect(() => {
-    bridge
-      .call<Array<{ matchId: string }>>("localdb.matches.list", { limit: 1000, offset: 0 })
-      .then((items) => setSaved(Array.isArray(items) && items.some((m) => m.matchId === matchId)))
-      .catch(() => null);
+    setSaved(getItem(savedKey(matchId)) === "1");
   }, [matchId]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!match) return;
-      await bridge.call("localdb.matches.save", { match });
+      setItem(savedKey(matchId), "1");
     },
     onSuccess: () => {
       setSaved(true);

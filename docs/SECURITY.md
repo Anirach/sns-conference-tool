@@ -26,8 +26,6 @@ A failed boot logs the offending property names and points back here. Set every 
 | SNS token master key | `SNS_CRYPTO_MASTER_KEY` (maps to `sns.crypto.master-key`) | AES-256-GCM seed for encrypting Facebook / LinkedIn tokens at rest in `sns_links.*_token_enc`. | Re-encrypt window: bring up the new key, run a one-off job that decrypts with old + encrypts with new, then retire the old. Future work: envelope encryption with per-record DEKs. |
 | Audit IP salt | `SNS_AUDIT_IP_SALT` (maps to `sns.audit.ip-salt`) | SHA-256 salt applied before persisting request IP hashes into `audit_log`. | Rotate opportunistically. Old hashes stay valid; new ones are simply non-comparable to old. |
 | Prometheus scrape token | `SNS_ACTUATOR_SCRAPE_TOKEN` (maps to `sns.actuator.scrape-token`) | Bearer token Prometheus uses to scrape `/actuator/prometheus` (constant-time compare). When unset, the endpoint falls back to JWT auth. | Rotate when the Prometheus deployment rotates its scrape config. |
-| FCM service-account JSON | `SNS_PUSH_FCM_CREDENTIALS_JSON` | Signs FCM HTTP v1 requests. | Rotate in Firebase console + rolling restart of backend pods. |
-| APNs .p8 signing key | `SNS_PUSH_APNS_SIGNING_KEY_PEM` + `SNS_PUSH_APNS_KEY_ID` + `SNS_PUSH_APNS_TEAM_ID` | Signs APNs JWT. | Rotate annually in Apple Developer portal; update env + rolling restart. |
 | AWS KMS CMKs | Provisioned by Terraform (`kms_app` + `kms_data`) | RDS + S3 + ElastiCache SSE; app-level envelope encryption seed. | Annual automatic rotation enabled (`enable_key_rotation = true`). |
 | Postgres master password | `SPRING_DATASOURCE_PASSWORD` | DB auth. | Managed via AWS Secrets Manager rotation; the `:app` Hikari pool picks up new creds on next connection. |
 

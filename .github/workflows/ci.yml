@@ -91,23 +91,6 @@ jobs:
           path: web/playwright-report
           retention-days: 7
 
-  mobile:
-    name: Mobile (flutter analyze)
-    runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.22.x
-      - run: flutter --version
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
-
   backend:
     name: Backend (gradle build)
     runs-on: ubuntu-latest

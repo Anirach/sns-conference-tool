@@ -9,17 +9,17 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
 import { QrScannerMock } from "@/components/onboarding/QrScannerMock";
+import { ScanCipherModal } from "@/components/scan/ScanCipherModal";
 import { eventsApi } from "@/lib/api/events";
-import { bridge } from "@/lib/bridge/client";
 import { events as allEvents } from "@/lib/fixtures/events";
 import type { ConferenceEvent } from "@/lib/fixtures/types";
-import type { QrScanResult } from "@/lib/bridge/types";
 
 export default function JoinEventPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const { data: joined = [] } = useQuery<ConferenceEvent[]>({
     queryKey: ["events", "joined"],
@@ -35,13 +35,13 @@ export default function JoinEventPage() {
     onError: () => toast({ title: "Cannot join", description: "Check the cipher and try again.", variant: "error" })
   });
 
-  async function onScanQr() {
-    try {
-      const res = await bridge.call<QrScanResult>("qr.scan");
-      if (res.eventCode) joinMut.mutate(res.eventCode);
-    } catch {
-      toast({ title: "Scanner unavailable", description: "Enter the cipher manually.", variant: "error" });
-    }
+  function onScanQr() {
+    setScanOpen(true);
+  }
+
+  function handleScanned(cipher: string) {
+    setScanOpen(false);
+    if (cipher) joinMut.mutate(cipher);
   }
 
   return (
@@ -125,6 +125,11 @@ export default function JoinEventPage() {
           </div>
         </section>
       </div>
+      <ScanCipherModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onScan={handleScanned}
+      />
     </AppShell>
   );
 }

@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // `standalone` produces a self-contained build at .next/standalone — minimal Docker image
+  // can `node server.js` from there without copying node_modules.
+  output: "standalone",
   reactStrictMode: true,
+  // next/image's loader requires a runtime image-optimisation server; for the Docker
+  // standalone path we just pass through the original asset.
+  images: { unoptimized: true },
   experimental: {
     typedRoutes: false
   },

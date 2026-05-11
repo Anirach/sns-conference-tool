@@ -2,9 +2,10 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useEffect, useState } from "react";
-import { BridgeProvider } from "@/components/bridge/BridgeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
 import { initMockApi } from "@/lib/api/mocks/init";
+import { registerPwa } from "@/lib/pwa/register";
+import { useAuthStore } from "@/lib/state/authStore";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -22,9 +23,20 @@ export function Providers({ children }: { children: ReactNode }) {
   const [mswReady, setMswReady] = useState(process.env.NEXT_PUBLIC_MOCK_API !== "1");
 
   useEffect(() => {
+    // Hydrate auth from localStorage so the bottom tab bar's useIsAdmin() resolves on first
+    // paint (not just inside /admin where the layout used to trigger it).
+    useAuthStore.getState().hydrate();
+
     initMockApi()
       .catch((err) => console.warn("MSW init failed; running without mocks", err))
-      .finally(() => setMswReady(true));
+      .finally(() => {
+        setMswReady(true);
+        // Register the offline app shell SW only when MSW isn't using its slot. The two
+        // service workers can't coexist on the same scope.
+        if (process.env.NEXT_PUBLIC_MOCK_API !== "1") {
+          void registerPwa();
+        }
+      });
   }, []);
 
   if (!mswReady) {
@@ -37,9 +49,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      <BridgeProvider>
-        <ToastProvider>{children}</ToastProvider>
-      </BridgeProvider>
+      <ToastProvider>{children}</ToastProvider>
     </QueryClientProvider>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, FileText, Link as LinkIcon, Plus, Trash2, Type, Upload } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -11,9 +11,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Dialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/ui/Toast";
 import { interestsApi } from "@/lib/api/interests";
-import { bridge } from "@/lib/bridge/client";
 import type { Interest, InterestType } from "@/lib/fixtures/types";
-import type { FilePickResult } from "@/lib/bridge/types";
+
+interface PickedArticle {
+  name: string;
+  sizeBytes: number;
+}
 
 export default function InterestsPage() {
   const qc = useQueryClient();
@@ -27,7 +30,8 @@ export default function InterestsPage() {
   const [tab, setTab] = useState<InterestType>("TEXT");
   const [text, setText] = useState("");
   const [link, setLink] = useState("");
-  const [picked, setPicked] = useState<FilePickResult | null>(null);
+  const [picked, setPicked] = useState<PickedArticle | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const createMut = useMutation({
     mutationFn: (body: { type: InterestType; content: string }) =>
@@ -59,13 +63,18 @@ export default function InterestsPage() {
     setTab("TEXT");
   }
 
-  async function onPick() {
-    try {
-      const res = await bridge.call<FilePickResult>("file.pickArticle", { allowedExt: ["pdf", "txt"] });
-      setPicked(res);
-    } catch {
-      toast({ title: "File picker unavailable", variant: "error" });
+  function onPick() {
+    fileRef.current?.click();
+  }
+
+  function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large (max 10 MB)", variant: "error" });
+      return;
     }
+    setPicked({ name: file.name, sizeBytes: file.size });
   }
 
   function submit() {
@@ -74,7 +83,7 @@ export default function InterestsPage() {
     } else if (tab === "ARTICLE_LINK" && link.trim()) {
       createMut.mutate({ type: "ARTICLE_LINK", content: link });
     } else if (tab === "ARTICLE_LOCAL" && picked) {
-      createMut.mutate({ type: "ARTICLE_LOCAL", content: picked.path });
+      createMut.mutate({ type: "ARTICLE_LOCAL", content: picked.name });
     }
   }
 
@@ -210,6 +219,13 @@ export default function InterestsPage() {
 
           {tab === "ARTICLE_LOCAL" ? (
             <div className="flex flex-col gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf,text/plain,text/markdown,.pdf,.txt,.md"
+                onChange={onFileChosen}
+                className="hidden"
+              />
               <button
                 type="button"
                 onClick={onPick}

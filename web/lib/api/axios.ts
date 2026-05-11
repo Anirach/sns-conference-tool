@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
-import { bridge } from "../bridge/client";
+import { getItem, setItem } from "../native/storage";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE ?? "/api",
@@ -7,20 +7,14 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" }
 });
 
-api.interceptors.request.use(async (cfg) => {
+api.interceptors.request.use((cfg) => {
   // Don't attach bearer to auth endpoints. A stale JWT from a previous backend (different
   // signing keypair after a restart, expired, etc.) makes the resource-server filter reject
   // the request with 401 *before* the permitAll login controller runs — the user sees their
   // valid credentials get refused for no apparent reason.
   if (cfg.url && /^\/?auth\//.test(cfg.url)) return cfg;
-  try {
-    const jwt = await bridge.call<string | null>("storage.get", { key: "jwt" });
-    if (jwt) {
-      cfg.headers.set("Authorization", `Bearer ${jwt}`);
-    }
-  } catch {
-    /* bridge unavailable / no jwt yet */
-  }
+  const jwt = getItem("auth.jwt");
+  if (jwt) cfg.headers.set("Authorization", `Bearer ${jwt}`);
   return cfg;
 });
 
@@ -36,11 +30,11 @@ api.interceptors.response.use(
       throw err;
     }
     try {
-      const refresh = await bridge.call<string | null>("storage.get", { key: "refresh" });
+      const refresh = getItem("auth.refresh");
       if (!refresh) throw err;
       const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refresh });
-      await bridge.call("storage.set", { key: "jwt", value: data.accessToken });
-      await bridge.call("storage.set", { key: "refresh", value: data.refreshToken });
+      setItem("auth.jwt", data.accessToken);
+      setItem("auth.refresh", data.refreshToken);
       original.__retried = true;
       original.headers = { ...original.headers, Authorization: `Bearer ${data.accessToken}` };
       return api(original);

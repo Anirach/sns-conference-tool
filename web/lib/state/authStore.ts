@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { bridge } from "../bridge/client";
+import { getItem, removeItem, setItem } from "../native/storage";
 import type { AuthTokens, Role, User } from "../fixtures/types";
 
 interface AuthState {
@@ -9,10 +9,10 @@ interface AuthState {
   tokens: AuthTokens | null;
   role: Role | null;
   hydrated: boolean;
-  setSession: (tokens: AuthTokens, user?: User) => Promise<void>;
+  setSession: (tokens: AuthTokens, user?: User) => void;
   setUser: (user: User) => void;
-  hydrate: () => Promise<void>;
-  signOut: () => Promise<void>;
+  hydrate: () => void;
+  signOut: () => void;
 }
 
 /** Decode the `role` claim out of a JWT. Returns null on any parse failure. */
@@ -38,9 +38,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   role: null,
   hydrated: false,
 
-  async setSession(tokens, user) {
-    await bridge.call("storage.set", { key: "jwt", value: tokens.accessToken }).catch(() => null);
-    await bridge.call("storage.set", { key: "refresh", value: tokens.refreshToken }).catch(() => null);
+  setSession(tokens, user) {
+    setItem("auth.jwt", tokens.accessToken);
+    setItem("auth.refresh", tokens.refreshToken);
     set({ tokens, user: user ?? get().user, role: roleFromJwt(tokens.accessToken) });
   },
 
@@ -48,9 +48,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user });
   },
 
-  async hydrate() {
-    const jwt = await bridge.call<string | null>("storage.get", { key: "jwt" }).catch(() => null);
-    const refresh = await bridge.call<string | null>("storage.get", { key: "refresh" }).catch(() => null);
+  hydrate() {
+    const jwt = getItem("auth.jwt");
+    const refresh = getItem("auth.refresh");
     if (jwt && refresh) {
       set({
         tokens: { accessToken: jwt, refreshToken: refresh, userId: "hydrated" },
@@ -60,9 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ hydrated: true });
   },
 
-  async signOut() {
-    await bridge.call("storage.delete", { key: "jwt" }).catch(() => null);
-    await bridge.call("storage.delete", { key: "refresh" }).catch(() => null);
+  signOut() {
+    removeItem("auth.jwt");
+    removeItem("auth.refresh");
     set({ tokens: null, user: null, role: null });
   }
 }));

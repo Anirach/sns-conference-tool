@@ -9,6 +9,7 @@ This manual covers everything you can do in the SNS Conference Tool — both as 
 ## Table of contents
 
 1. [Quick start](#1-quick-start)
+   - 1.2 [Install on your phone](#12-install-on-your-phone)
 2. [Getting in](#2-getting-in)
    - 2.1 [First-time admission](#21-first-time-admission-register)
    - 2.2 [Returning fellow](#22-returning-fellow-login)
@@ -44,6 +45,25 @@ This manual covers everything you can do in the SNS Conference Tool — both as 
 | Manage events / users (admin) | Tap **Registry** in the bottom bar |
 
 You can run all of this against the seeded demo dataset — no real conference required. See [Demo accounts](#7-demo-accounts).
+
+### 1.2 Install on your phone
+
+The app is a **PWA** — it runs in a normal mobile browser tab and can be installed to your home screen for an app-like experience (full-screen, own icon, offline shell). No App Store, no Play Store, no download.
+
+**iOS Safari (iPhone, iPad):**
+1. Open the conference URL in **Safari** (other browsers don't support Add to Home Screen).
+2. Tap the **Share** button (square with arrow up).
+3. Scroll down → **Add to Home Screen** → confirm.
+4. The brass *S* glyph appears on your home screen. Tap it — opens in standalone mode (no browser address bar).
+
+**Android Chrome:**
+1. Open the conference URL in Chrome.
+2. Either tap the **Install app** chip in the address bar, or open the **⋮** menu → **Install app** / **Add to Home screen**.
+3. Confirm. The icon appears in your launcher.
+
+**Desktop (Chrome, Edge):** an install icon appears in the address bar; click it to install the app as a desktop window.
+
+The PWA caches its app shell, so launching it shows the layout immediately even on a slow connection. Authentication and matches still need network — when offline you'll see the empty states.
 
 ---
 
@@ -152,7 +172,7 @@ The **Letters** tab lists every chat thread you have, most recent first.
 - Messages are delivered in real time over a STOMP WebSocket — the other party sees them appear without refreshing.
 - When you open a thread, all messages addressed to you are marked read; the unread badge clears.
 
-**Push notifications** (mobile only): if you've granted notification permission, you'll get an OS notification when a new message arrives while the app is in the background.
+**Push notifications** are deferred to v2 (Web Push). For now, while the app tab is open you'll see in-app toasts when a new message or match arrives; if the tab is in the background the message still arrives — you'll see it next time you open the app.
 
 ### 3.5 Study — settings, profile, interests
 
@@ -161,9 +181,9 @@ Tap **Study** in the bottom bar to reach your settings page. From here:
 - **Profile** → edit first name, last name, academic title, institution, profile portrait.
 - **Interests** → add / remove the interests that drive matching (see §4).
 - **SNS Links** → optionally connect your Facebook or LinkedIn account so the system can enrich your profile (academic position, affiliation history) automatically.
-- **Push notifications** → toggle on / off.
+- **Push notifications** → toggle. *Currently a no-op — Web Push is a v2 feature.*
 - **GPS consent** → toggle on / off (turning off disables vicinity matching).
-- **Local storage** → toggle whether the mobile shell can cache offline data.
+- **Local storage** → toggle whether the app caches the offline shell.
 - **Language** → English / Thai / German.
 - **Sign out** → logs you out and clears your session.
 - **Export my data** → downloads a ZIP containing every record we have about you (see §5).

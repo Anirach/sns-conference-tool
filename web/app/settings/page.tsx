@@ -21,7 +21,7 @@ import { UserAvatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
-import { bridge } from "@/lib/bridge/client";
+import { getItem, setItem } from "@/lib/native/storage";
 import { useAuthStore } from "@/lib/state/authStore";
 import { currentUser } from "@/lib/fixtures/users";
 import type { UserSettings } from "@/lib/fixtures/types";
@@ -80,28 +80,24 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULTS);
 
   useEffect(() => {
-    bridge
-      .call<string | null>("storage.get", { key: SETTINGS_KEY })
-      .then((raw) => {
-        if (raw) {
-          try {
-            setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
-          } catch {
-            /* ignore */
-          }
-        }
-      })
-      .catch(() => null);
+    const raw = getItem(`settings.${SETTINGS_KEY}`);
+    if (raw) {
+      try {
+        setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
+      } catch {
+        /* ignore — fall back to defaults */
+      }
+    }
   }, []);
 
   function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    bridge.call("storage.set", { key: SETTINGS_KEY, value: JSON.stringify(next) }).catch(() => null);
+    setItem(`settings.${SETTINGS_KEY}`, JSON.stringify(next));
   }
 
-  async function onSignOut() {
-    await signOut();
+  function onSignOut() {
+    signOut();
     toast({ title: "Adjourned" });
     router.push("/");
   }

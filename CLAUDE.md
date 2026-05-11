@@ -15,7 +15,7 @@ All five phases of the implementation plan plus the follow-up code-completion, p
 - **Performance round** — `recomputeForUser` incremental matching (O(N) on single-user changes), `LEAST/GREATEST`-free vicinity SQL with CTE-hoisted "me", N+1 fix on `listJoined`, paged `findAll` everywhere, `PushGatewayRouter` EnumMap dispatch, `SELECT … FOR UPDATE SKIP LOCKED` outbox claim, bucketed Redis chat channels (no `PSUBSCRIBE`).
 - **Security round** — login + refresh rate-limit buckets (per-IP + per-email), phantom-hash for unknown emails, constant-time TAN compare, refresh-token reuse-detection family revoke, JWT `iss` + `aud` validation, `PasswordPolicy` (length / email-equal / 100-entry blocklist), CORS allowlist driven by `sns.security.cors.allowed-origins` (HTTP + STOMP), MIME + magic-byte upload sniff, `/actuator/prometheus` scrape-token gate, audit-log immutability trigger + 180-day prune cron, `ProductionSecretsCheck` boot-time gate refusing dev defaults under `prod`, `Cache-Control: no-store` on `/api/auth/**`.
 
-What remains is external-only: real Firebase / OAuth / APNs credentials, `flutter create` + Gradle wrapper + Isar codegen on a dev machine, AWS account provisioning, store submissions. See [Environment gaps](#environment-gaps-cannot-be-done-from-code-alone).
+What remains is external-only: real Facebook / LinkedIn OAuth client credentials, AWS account provisioning, ALB+ACM HTTPS for staging/prod. Web Push (VAPID + service-worker push handler) is intentionally deferred — push outbox currently routes everything to `LoggingPushGateway`. See [Environment gaps](#environment-gaps-cannot-be-done-from-code-alone).
 
 ## Commands
 
@@ -56,18 +56,9 @@ Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backen
 
 [`web/lib/api/mocks/init.ts`](web/lib/api/mocks/init.ts) auto-unregisters any `/mockServiceWorker.js` registration when `NEXT_PUBLIC_MOCK_API` resolves to zero domains. Reason: the MSW service worker persists across reloads / env changes and, once stranded without a handler table, intercepts fetches and surfaces as random 401s on `/api/auth/login`. The proactive unregister means flipping the env to `"0"` self-heals after one reload — no user-side DevTools dance.
 
-### Mobile (`cd mobile`)
-```bash
-# One-time: generate platform projects and Isar codegen
-flutter create --platforms=android,ios --project-name=sns_mobile .
-dart run build_runner build --delete-conflicting-outputs
+### Mobile
 
-flutter pub get
-flutter analyze
-flutter test
-flutter run                       # Android emulator uses http://10.0.2.2:3000
-```
-Override at build time: `flutter run --dart-define=FRONTEND_ORIGIN=https://staging.example.com`.
+There is no separate mobile codebase — the Next.js `web/` app is the canonical participant frontend for both iOS and Android, served as a PWA. Users open the URL in Safari / Chrome and (optionally) tap **Share → Add to Home Screen** for an installed-app feel. See [docs/User-Manual.md §1.2](docs/User-Manual.md#12-install-on-your-phone).
 
 ### Infrastructure (`cd infra`)
 Two compose profiles let you bring up the right slice:
@@ -95,8 +86,7 @@ BACKEND_PROXY_TARGET=http://localhost:8080
 
 ### Top-level layout
 ```
-web/         Next.js 14 (App Router), MSW contract + per-domain cutover
-mobile/      Flutter 3.22 WebView shell + JS bridge + native services
+web/         Next.js 14 (App Router), responsive PWA, MSW contract + per-domain cutover
 backend/     Spring Boot 3.3 / Java 21 multi-module
   :app           bootstrap, Flyway, exception handler, export aggregator, GDPR cron
   :common        shared DTOs + cross-module domain events
@@ -112,13 +102,15 @@ infra/       docker-compose, Helm chart, Prometheus alerts, Grafana dashboard
 docs/        SNS-system.md spec + runbooks/
 ```
 
-### JS ↔ Flutter bridge
-The most non-obvious system in this repo. Every cross-boundary call uses `{ id, type, payload }` JSON messages.
+### Web-native capabilities
 
-- **Web → Native**: `window.FlutterBridge.postMessage(json)` for GPS start/stop, QR scan, file picker, secure storage, SNS OAuth, push permission/token, localdb (Isar).
-- **Native → Web**: Flutter evaluates JS via `window.dispatchEvent(new CustomEvent("flutter-bridge-event", ...))` for `gps.fix`, `push.received`, connectivity changes, app resume.
-- Web side: `web/lib/bridge/client.ts` + `types.ts`; browser fallback `mock.ts` returns fixtures.
-- Flutter side: `mobile/lib/bridge/js_bridge.dart` dispatches to services in `mobile/lib/native/`. Location streams fixes back as `gps.fix` events; the scanner opens a full-screen modal via `rootNavigatorKeyProvider`.
+Where the participant app needs platform features it talks straight to the browser, no shim:
+- **Auth tokens** in `localStorage` via [`web/lib/native/storage.ts`](web/lib/native/storage.ts) (sns.* prefix). Persists across tab close and PWA install.
+- **QR scan** via [`web/components/scan/ScanCipherModal.tsx`](web/components/scan/ScanCipherModal.tsx) using `html5-qrcode` (camera through `getUserMedia`).
+- **File upload** via a hidden `<input type="file" accept="application/pdf,text/plain">` in [`web/app/interests/page.tsx`](web/app/interests/page.tsx).
+- **Geolocation** via `navigator.geolocation.watchPosition` (already wrapped by the participant location ingest path).
+- **SNS OAuth** via a `window.open` popup that postMessages back from `/api/sns/{provider}/callback`.
+- **PWA install + offline shell** via [`web/public/manifest.webmanifest`](web/public/manifest.webmanifest) + [`web/public/sw.js`](web/public/sw.js) registered by [`web/lib/pwa/register.ts`](web/lib/pwa/register.ts) only when MSW isn't using the SW slot.
 
 ### Contract discipline
 `web/lib/api/mocks/handlers.ts` and `backend/app/src/main/resources/openapi.yaml` must stay 1:1. When a backend endpoint replaces a mock, remove the MSW handler for that domain and the OpenAPI schema becomes the sole source of truth. The per-domain toggle in `NEXT_PUBLIC_MOCK_API` exists to cut over incrementally.
@@ -126,7 +118,7 @@ The most non-obvious system in this repo. Every cross-boundary call uses `{ id, 
 ### State management (web)
 - **Zustand** (`web/lib/state/`): auth tokens + userId, current event + radius, chat drafts.
 - **TanStack Query**: server state caching + refetch; combined with the axios JWT-refresh interceptor.
-- **Axios** (`web/lib/api/axios.ts`): injects `Authorization: Bearer <jwt>` from bridge storage; on 401 silently hits `/api/auth/refresh` and retries once.
+- **Axios** (`web/lib/api/axios.ts`): injects `Authorization: Bearer <jwt>` from `localStorage`; on 401 silently hits `/api/auth/refresh` and retries once.
 
 ### Realtime (Phase 3)
 STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Fan-out goes through `ChatRelay` — `RedisChatRelay` is the default (`sns.chat.relay=redis`) and publishes each persisted message to bucketed channels (`ws:chat:bucket:{hash(userId) % 64}`) that every backend instance subscribes to with plain `SUBSCRIBE` — eliminates the `PSUBSCRIBE` pattern-match hot spot that the old per-user-channel design caused. `InProcessChatRelay` (`sns.chat.relay=inproc`) bypasses Redis for single-pod / tests. Allowed WS origins come from `sns.security.cors.allowed-origins` — empty list means same-origin only.
@@ -141,7 +133,7 @@ STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authoriza
 `VicinityService.matchesInRadius` is `@Cacheable(cacheNames="vicinity")` with a 10-s TTL (Redis-backed via `CacheConfig`). Cache is evicted on `LocationUpdated` (posted after a location fix commits) and on `MatchRecomputeRequested` so the next read sees fresh similarity rows. Location ingest itself is server-side-throttled: fixes within 30 s AND < 10 m of the previous are rejected silently and increment `sns_location_throttled`.
 
 ### Push pipeline (Phase 3)
-Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default). The drain uses `claimPendingIds(batch=50)` which executes `SELECT … FOR UPDATE SKIP LOCKED` so two pods drain concurrently without picking the same row; the attempts counter is incremented inside the short claim transaction. Each row's gateway call happens outside that transaction so row locks are released before the network I/O. `PushGatewayRouter` resolves once at construction into an `EnumMap<Platform, PushGateway>`: ANDROID/WEB → `FcmPushGateway` (firebase-admin; `@ConditionalOnProperty` on `sns.push.fcm.credentials-json`), IOS → `ApnsPushGateway` (pushy; `@ConditionalOnProperty` on `sns.push.apns.team-id`). `LoggingPushGateway` is always registered as fallback. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`.
+Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`) → `@Scheduled` drain (5 s default). The drain uses `claimPendingIds(batch=50)` which executes `SELECT … FOR UPDATE SKIP LOCKED` so two pods drain concurrently without picking the same row; the attempts counter is incremented inside the short claim transaction. Each row's gateway call happens outside that transaction so row locks are released before the network I/O. `PushGatewayRouter` currently delegates every delivery to `LoggingPushGateway` — Web Push (VAPID + SW push handler) is deferred to a follow-up; outbox rows still flow and get marked DELIVERED for observability. At-least-once: failures stay `PENDING` up to 5 attempts, then move to `FAILED`. (V11 Flyway constraint locks `device_tokens.platform = 'WEB'` so no native rows can sneak in.)
 
 ### Auth & security (security round)
 - **Brute-force throttling.** `RateLimitFilter` covers register (5 / h / IP), login (30 / h / IP and 10 / h / email), refresh (60 / h / IP). Buckets share the `RateLimiter` interface — `InMemoryRateLimiter` (default) or `RedissonRateLimiter` (multi-pod, `sns.rate-limit.backend=redis`).
@@ -194,9 +186,6 @@ and wiring notes):
 - PII-masking log encoder: `PiiMaskingMessageJsonProvider` (JSON mode) + `%piiMsg` pattern
   converter (plain mode) redact emails, bearer tokens, JWTs, high-precision lat/lon.
 - Idempotent chat send: Flyway V8 adds `client_message_id`; `ChatService.send` dedupes replays.
-- Real FCM + APNs: `FcmPushGateway` (firebase-admin) + `ApnsPushGateway` (pushy) registered
-  conditionally; `PushGatewayRouter` dispatches by `DeviceTokenEntity.Platform`. Logging fallback
-  remains when no creds are configured.
 - OpenNLP/RAKE: `KeywordExtractor` is now an interface. `OpenNlpKeywordExtractor` is `@Primary`
   when `sns.nlp.models-dir` is set; otherwise `TfKeywordExtractor` stays.
 - HMAC-signed QR tokens: `QrCodeService.issue(code, expiresAt)` + `verify(token)`.
@@ -204,12 +193,12 @@ and wiring notes):
 - SNS enrichment: `SnsEnrichmentJob` runs every 6h when `sns.enrichment.enabled=true`, pulls
   provider userinfo, writes to `sns_links.imported_data`.
 - Helm: `redis-statefulset.yaml` (Sentinel, 3 replicas, PVCs) and `networkpolicy.yaml`
-  (egress allow-list for DNS / Postgres / Redis / OTel / FCM / APNs / OAuth).
+  (egress allow-list for DNS / Postgres / Redis / OTel / OAuth provider / future Web Push).
 - Terraform: `infra/terraform/modules/{vpc, rds-postgis, elasticache-redis, s3, kms, route53,
   acm}` + `environments/{staging, prod}` composing them.
 - CI: `contract` job runs `tools/openapi-diff.sh`; `security` job runs `pnpm audit --prod`,
-  Gradle `dependencyCheckAggregate`, and OWASP ZAP baseline. `deploy-backend.yml`,
-  `deploy-web.yml`, `deploy-mobile.yml` workflows land the build output.
+  Gradle `dependencyCheckAggregate`, and OWASP ZAP baseline. `deploy-backend.yml` and
+  `deploy-web.yml` workflows land the build output.
 - k6 scenarios: `infra/load/k6-vicinity.js` + `k6-chat.js`.
 - Unit tests: `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`,
   `AesGcmCipherTest`, `PiiScrubberTest`.
@@ -217,17 +206,14 @@ and wiring notes):
   `ChatIntegrationTest`, `AuditLogIntegrationTest` all share a Postgres + Redis Testcontainers
   base. Multi-pod WS round-trip is wired by the base class (Redis container present), asserted by
   the existing chat test set.
-- Mobile: `sns_auth_service.dart` wraps `flutter_facebook_auth` and a `url_launcher` custom tab
-  for LinkedIn.
+- SNS OAuth: popup-window flow via `/api/sns/{provider}/start` + `/callback` (browser only;
+  no native SDK).
 
 ## Environment gaps (cannot be done from code alone)
 
-- `flutter create` to materialise `mobile/ios/` + `mobile/android/`.
 - `gradle wrapper` to commit the wrapper jar.
-- `dart run build_runner build` to materialise `mobile/lib/storage/isar_db.g.dart`.
-- Firebase project config (`google-services.json`, `GoogleService-Info.plist`) + APNs
-  entitlements + `.p8` signing key uploaded as a repo secret.
 - Facebook + LinkedIn OAuth app registration (client IDs, secrets, redirect URIs, app review).
 - AWS account + Terraform state bucket + external-secrets operator + PagerDuty / Sentry wiring.
 - Running k6 load scenarios, OWASP ZAP scan, and accessibility audit against a real staging
-  deployment. Store submission (App Store + Play Store).
+  deployment.
+- (Future) VAPID keypair + Web Push gateway implementation when push notifications come back.

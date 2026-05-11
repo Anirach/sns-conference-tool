@@ -5,7 +5,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SNS Conference Tool",
   description: "Discover nearby researchers with overlapping interests at on-site conferences.",
-  applicationName: "SNS Conference Tool"
+  applicationName: "SNS Conference Tool",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "SNS",
+    statusBarStyle: "default"
+  },
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon-180.png", sizes: "180x180", type: "image/png" }]
+  }
 };
 
 export const viewport: Viewport = {
@@ -14,7 +24,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#2f7cff"
+  themeColor: "#16231f"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
