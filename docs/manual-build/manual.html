@@ -357,6 +357,7 @@ a { color: inherit; text-decoration: none; }
   <div>
     <h3>Session detail</h3>
     <p>Header shows name + venue + cipher. Stat tiles count fellows in residence, affinities, correspondence (chat messages), and overall status.</p>
+    <p>Below the stat tiles is a <strong>Cipher QR card</strong> — the cipher plaintext sits above a scannable QR code (Editorial Ivory ink on cream paper). Two outline buttons download the QR for badge printing: <strong>PNG</strong> exports <code>&lt;CIPHER&gt;-qr.png</code> at 1024×1024 px on white background (≈ 8.7 cm at 300 dpi); <strong>SVG</strong> exports <code>&lt;CIPHER&gt;-qr.svg</code> for crisp scaling at any size. Both encode the plaintext cipher; participants can scan or type. Error-correction level H tolerates smudges or partial coverage on the printed badge.</p>
     <p>The <strong>venue heatmap</strong> is an inline SVG with concentric 10/25/50 m rings centred on the venue, with each fellow's last known position dotted. Useful for spotting clusters or stragglers in real time.</p>
     <p>Below the heatmap is the <strong>Fellows present</strong> table — name + institution + last GPS fix time + selected radius. Tap a row to jump to that fellow's dossier.</p>
     <p>The <strong>Adjourn permanently</strong> button at the bottom hard-deletes the event after a confirmation tap; the deletion cascades to participations, matches, and chat messages. <em>It cannot be undone.</em></p>
