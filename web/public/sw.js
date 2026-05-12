@@ -5,7 +5,7 @@
 //   - Network-only for /api/* and /ws/* (auth-bearing, websocket — never cache).
 //   - Network-first with stale fallback for everything else (HTML pages).
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `sns-shell-${VERSION}`;
 const SHELL_ASSETS = [
   "/",
@@ -67,11 +67,18 @@ self.addEventListener("fetch", (event) => {
   }
 
   // App shell: network-first, fall back to cached '/' for navigation requests offline.
+  // Always resolve to a Response — returning undefined to respondWith throws
+  // "Failed to convert value to 'Response'" and breaks the navigation entirely.
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req).catch(() =>
-        caches.open(SHELL_CACHE).then((c) => c.match("/") || c.match(req))
-      )
+      fetch(req).catch(async () => {
+        const c = await caches.open(SHELL_CACHE);
+        return (
+          (await c.match("/")) ||
+          (await c.match(req)) ||
+          new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } })
+        );
+      })
     );
     return;
   }
