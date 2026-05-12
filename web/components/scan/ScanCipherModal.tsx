@@ -57,10 +57,9 @@ export function ScanCipherModal({ open, onClose, onScan }: ScanCipherModalProps)
       cancelled = true;
       const inst = scannerRef.current;
       if (inst) {
-        void inst
-          .stop()
+        void Promise.resolve(inst.stop())
           .catch(() => null)
-          .finally(() => inst.clear().catch(() => null));
+          .finally(() => Promise.resolve(inst.clear()).catch(() => null));
         scannerRef.current = null;
       }
     };

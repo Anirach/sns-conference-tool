@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: sns-postgres
+    environment:
+      POSTGRES_DB: conf
+      POSTGRES_USER: conf
+      POSTGRES_PASSWORD: conf
+    ports:
+      - "55434:5432"
+    volumes:
+      - sns_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conf -d conf"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sns-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    container_name: sns-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - sns_miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: sns-mailhog
+    ports:
+      - "1026:1025"
+      - "8026:8025"
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: app/Dockerfile
+    container_name: sns-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/conf
+      SPRING_DATASOURCE_USERNAME: conf
+      SPRING_DATASOURCE_PASSWORD: conf
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      REDISSON_ADDRESS: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      VERIFICATION_DEV_MODE: "true"
+      CHAT_RELAY: redis
+      RATE_LIMIT_BACKEND: memory
+      SERVER_PORT: "8080"
+      SNS_DEV_SEED_DEMO_DATA: "true"
+      SNS_ADMIN_EMAIL: "you@example.com"
+      CORS_ALLOWED_ORIGINS: https://sns.anirach.com,http://localhost:3002
+    ports:
+      - "8081:8080"
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_MOCK_API: "0"
+        NEXT_PUBLIC_API_BASE: /api
+    container_name: sns-web
+    depends_on:
+      - backend
+    environment:
+      BACKEND_PROXY_TARGET: http://backend:8080
+      NEXT_PUBLIC_MOCK_API: "0"
+      NEXT_PUBLIC_API_BASE: /api
+    ports:
+      - "3002:3000"
+
+volumes:
+  sns_pgdata: {}
+  sns_miniodata: {}

@@ -1,0 +1,21 @@
+services:
+  web:
+    image: folk-doctor-api:latest
+    container_name: sns-web
+    restart: unless-stopped
+    user: app
+    working_dir: /app
+    entrypoint: []
+    command: ["node", "server.js"]
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_MOCK_API: "0"
+      NEXT_PUBLIC_API_BASE: /api
+      BACKEND_PROXY_TARGET: http://host.docker.internal:8082
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    volumes:
+      - ../web/.next/standalone:/app:ro
+    ports:
+      - "3002:3000"

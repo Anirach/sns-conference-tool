@@ -1,0 +1,16 @@
+FROM folk-doctor-api:latest
+USER root
+WORKDIR /app
+RUN rm -rf /app/*
+COPY .next/standalone ./
+COPY .next/static ./.next/static
+COPY public ./public
+RUN chown -R app:app /app
+USER app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+EXPOSE 3000
+ENTRYPOINT []
+CMD ["node", "server.js"]
