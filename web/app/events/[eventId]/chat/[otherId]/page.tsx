@@ -11,7 +11,6 @@ import { MessageInput } from "@/components/chat/MessageInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator";
 import { chatApi } from "@/lib/api/chat";
 import { useChat } from "@/lib/ws/hooks";
-import { findUser, findMatchPair } from "@/lib/fixtures";
 import type { ChatHistory } from "@/lib/api/chat";
 
 export default function ChatPage() {
@@ -30,10 +29,10 @@ export default function ChatPage() {
     if (data?.messages) setMessages(data.messages);
   }, [data, setMessages]);
 
-  const other = findUser(otherId);
-  const match = findMatchPair(eventId, otherId);
-  const first = other?.firstName ?? "?";
-  const last = other?.lastName ?? "?";
+  const peer = data?.peer;
+  const first = peer?.firstName ?? "?";
+  const last = peer?.lastName ?? "?";
+  const commonKeywords = peer?.commonKeywords ?? [];
 
   return (
     <div className="mobile-frame flex h-[100dvh] flex-col">
@@ -48,7 +47,7 @@ export default function ChatPage() {
             <ChevronLeft className="h-5 w-5" strokeWidth={1.5} />
           </button>
           <div className="relative">
-            <UserAvatar firstName={first} lastName={last} size={36} shape="square" />
+            <UserAvatar firstName={first} lastName={last} src={peer?.pictureUrl ?? undefined} size={36} shape="square" />
             <OnlineDot online className="absolute -bottom-0.5 -right-0.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -56,16 +55,16 @@ export default function ChatPage() {
               {first} {last}
             </p>
             <p className="truncate font-serif text-[10px] italic text-muted-foreground">
-              {other?.institution ?? "In Residence"}
+              {peer?.institution ?? "In Residence"}
             </p>
           </div>
         </div>
       </header>
 
-      {bannerOpen && match && match.commonKeywords.length > 0 ? (
+      {bannerOpen && commonKeywords.length > 0 ? (
         <div className="mx-4 mt-3 flex items-start gap-2 bg-accent px-3 py-2 text-xs text-accent-foreground hairline">
           <span className="flex-1 font-serif italic">
-            You matched on: <strong className="font-semibold not-italic">{match.commonKeywords.slice(0, 3).join(", ")}</strong>
+            You matched on: <strong className="font-semibold not-italic">{commonKeywords.slice(0, 3).join(", ")}</strong>
           </span>
           <button
             type="button"

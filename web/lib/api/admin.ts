@@ -187,5 +187,10 @@ export const adminApi = {
       api.get<AdminPage<AdminOutboxRow>>(`/admin/ops/outbox?${qs({ page, size, status })}`),
     retry: (outboxId: UUID) => api.post<void>(`/admin/ops/outbox/${outboxId}/retry`),
     metrics: () => api.get<AdminOpsMetrics>(`/admin/ops/metrics`)
+  },
+  // Dev-only — endpoint is profile-gated to !prod on the backend and conditional on
+  // sns.dev.seed-demo-data=true. A 404 here is the prod signal to hide the button.
+  dev: {
+    resetDemo: () => api.post<void>(`/admin/dev/reset-demo`)
   }
 };

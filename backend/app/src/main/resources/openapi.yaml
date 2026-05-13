@@ -177,6 +177,38 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
 
+  /profile/settings:
+    get:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current user preferences
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserSettings" }
+    put:
+      tags: [Profile]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pushMatches:   { type: [boolean, "null"] }
+                pushChat:      { type: [boolean, "null"] }
+                gpsConsent:    { type: [boolean, "null"] }
+                keepRegister:  { type: [boolean, "null"] }
+                language:      { type: [string, "null"], enum: [en, th, de, null] }
+      responses:
+        "200":
+          description: Updated preferences
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserSettings" }
+
   /interests:
     get:
       tags: [Interests]
@@ -589,6 +621,15 @@ components:
         academicTitle: { type: [string, "null"] }
         institution: { type: [string, "null"] }
         profilePictureUrl: { type: [string, "null"], format: uri }
+    UserSettings:
+      type: object
+      required: [pushMatches, pushChat, gpsConsent, keepRegister, language]
+      properties:
+        pushMatches:   { type: boolean }
+        pushChat:      { type: boolean }
+        gpsConsent:    { type: boolean }
+        keepRegister:  { type: boolean }
+        language:      { type: string, enum: [en, th, de] }
     InterestType:
       type: string
       enum: [TEXT, ARTICLE_LOCAL, ARTICLE_LINK]

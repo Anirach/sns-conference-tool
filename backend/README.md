@@ -254,7 +254,11 @@ Container env (set in compose, override via `.env`):
 
 In `web/.env.local`:
 ```
-NEXT_PUBLIC_MOCK_API=1,-auth,-profile,-events,-interests,-matches,-chat,-devices,-sns
+NEXT_PUBLIC_MOCK_API=0
 BACKEND_PROXY_TARGET=http://localhost:8080
 ```
-Drop `-domain` entries from the CSV to roll individual domains back to MSW. Next's dev server rewrites `/api/*` and `/.well-known/*` to `BACKEND_PROXY_TARGET`.
+`NEXT_PUBLIC_MOCK_API=0` is the default everywhere — every `/api/*` call hits the real backend.
+Bring MSW back per-domain when iterating without a backend: `NEXT_PUBLIC_MOCK_API=chat` mocks
+just the chat endpoints, `NEXT_PUBLIC_MOCK_API=1` mocks everything. Next's dev server rewrites
+`/api/*` and `/.well-known/*` to `BACKEND_PROXY_TARGET`. WebSocket origin is derived from
+`window.location` at runtime, so production deploys don't need `NEXT_PUBLIC_WS_ORIGIN`.

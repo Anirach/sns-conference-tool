@@ -7,6 +7,7 @@ import {
   eventsByCode,
   findEvent,
   findMatchById,
+  findMatchPair,
   findUser,
   interestsForCurrentUser,
   listThreads,
@@ -36,7 +37,24 @@ export type MockDomain =
   | "matches"
   | "chat"
   | "users"
-  | "devices";
+  | "devices"
+  | "account";
+
+interface MockSettings {
+  pushMatches: boolean;
+  pushChat: boolean;
+  gpsConsent: boolean;
+  keepRegister: boolean;
+  language: "en" | "th" | "de";
+}
+
+const userSettingsState: MockSettings = {
+  pushMatches: true,
+  pushChat: true,
+  gpsConsent: true,
+  keepRegister: false,
+  language: "en"
+};
 
 export const authHandlers = [
   http.post(`${BASE}/auth/register`, async () => {
@@ -97,6 +115,22 @@ export const profileHandlers = [
     Object.assign(profileState, body);
     await delay(200);
     return HttpResponse.json(profileState);
+  }),
+
+  http.get(`${BASE}/profile/settings`, async () => {
+    await delay(80);
+    return HttpResponse.json(userSettingsState);
+  }),
+
+  http.put(`${BASE}/profile/settings`, async ({ request }) => {
+    const body = (await request.json()) as Partial<MockSettings>;
+    if (body.pushMatches !== undefined)  userSettingsState.pushMatches = body.pushMatches;
+    if (body.pushChat !== undefined)     userSettingsState.pushChat = body.pushChat;
+    if (body.gpsConsent !== undefined)   userSettingsState.gpsConsent = body.gpsConsent;
+    if (body.keepRegister !== undefined) userSettingsState.keepRegister = body.keepRegister;
+    if (body.language !== undefined)     userSettingsState.language = body.language;
+    await delay(120);
+    return HttpResponse.json(userSettingsState);
   })
 ];
 
@@ -106,18 +140,31 @@ export const snsHandlers = [
     return HttpResponse.json(snsLinks);
   }),
 
+  // Real backend returns {authUrl, state} so the popup can redirect to the provider.
+  // Mock returns the same shape — the popup target is harmless in frontend-only dev.
   http.post(`${BASE}/sns/link`, async ({ request }) => {
-    const body = (await request.json()) as { provider: "FACEBOOK" | "LINKEDIN"; providerUserId: string };
+    const body = (await request.json()) as { provider: "FACEBOOK" | "LINKEDIN" };
+    const state = `mock-state-${Date.now()}`;
+    await delay(150);
+    return HttpResponse.json({
+      authUrl: `https://example.com/mock-oauth/${body.provider.toLowerCase()}?state=${state}`,
+      state
+    });
+  }),
+
+  // Pretends the OAuth round-trip succeeded; appends a SnsLink so the list re-fetch shows it.
+  http.post(`${BASE}/sns/callback`, async ({ request }) => {
+    const body = (await request.json()) as { provider: "FACEBOOK" | "LINKEDIN" };
     const existing = snsLinks.findIndex((l) => l.provider === body.provider);
     const link: SnsLink = {
       provider: body.provider,
-      providerUserId: body.providerUserId,
+      providerUserId: `mock-${body.provider.toLowerCase()}-uid`,
       linkedAt: new Date().toISOString()
     };
     if (existing >= 0) snsLinks[existing] = link;
     else snsLinks.push(link);
-    await delay(250);
-    return HttpResponse.json(link);
+    await delay(200);
+    return HttpResponse.json({ ok: true });
   }),
 
   http.delete(`${BASE}/sns/:provider`, async ({ params }) => {
@@ -125,6 +172,25 @@ export const snsHandlers = [
     if (idx >= 0) snsLinks.splice(idx, 1);
     await delay(150);
     return HttpResponse.json({ ok: true });
+  })
+];
+
+// GDPR export + self soft-delete — backed by real endpoints; mock returns plausible shapes.
+export const accountHandlers = [
+  http.get(`${BASE}/users/me/export`, async () => {
+    await delay(300);
+    // Empty ZIP signature bytes — enough for a frontend "Save As" round-trip to succeed.
+    return new HttpResponse(
+      new Blob([new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])], {
+        type: "application/zip"
+      }),
+      { status: 200, headers: { "Content-Type": "application/zip" } }
+    );
+  }),
+
+  http.delete(`${BASE}/users/me`, async () => {
+    await delay(200);
+    return HttpResponse.json({ ok: true, status: "soft-deleted" });
   })
 ];
 
@@ -160,13 +226,15 @@ export const interestsHandlers = [
 export const eventsHandlers = [
   http.get(`${BASE}/events/joined`, async () => {
     await delay(120);
-    return HttpResponse.json(events.filter((e) => joinedEventIds.has(e.eventId)));
+    return HttpResponse.json(
+      events.filter((e) => joinedEventIds.has(e.eventId)).map(withAttendance)
+    );
   }),
 
   http.get(`${BASE}/events/:eventId`, async ({ params }) => {
     const evt = findEvent(params.eventId as string);
     if (!evt) return new HttpResponse(null, { status: 404 });
-    return HttpResponse.json(evt);
+    return HttpResponse.json(withAttendance(evt));
   }),
 
   http.post(`${BASE}/events/join`, async ({ request }) => {
@@ -186,7 +254,7 @@ export const eventsHandlers = [
     }
     joinedEventIds.add(evt.eventId);
     await delay(300);
-    return HttpResponse.json({ event: evt, joinedAt: new Date().toISOString() });
+    return HttpResponse.json({ event: withAttendance(evt), joinedAt: new Date().toISOString() });
   }),
 
   http.post(`${BASE}/events/:eventId/leave`, async ({ params }) => {
@@ -229,9 +297,24 @@ export const chatHandlers = [
   }),
 
   http.get(`${BASE}/chat/:eventId/:otherUserId`, async ({ params }) => {
-    const messages = chatForPair(params.eventId as string, params.otherUserId as string);
+    const eventId = params.eventId as string;
+    const otherUserId = params.otherUserId as string;
+    const messages = chatForPair(eventId, otherUserId);
+    const peer = findUser(otherUserId);
+    const match = findMatchPair(eventId, otherUserId);
     await delay(150);
-    return HttpResponse.json({ messages });
+    return HttpResponse.json({
+      messages,
+      peer: {
+        userId: otherUserId,
+        firstName: peer?.firstName ?? null,
+        lastName: peer?.lastName ?? null,
+        title: peer?.academicTitle ?? null,
+        institution: peer?.institution ?? null,
+        pictureUrl: peer?.profilePictureUrl ?? null,
+        commonKeywords: match?.commonKeywords ?? []
+      }
+    });
   }),
 
   http.post(`${BASE}/chat/send`, async ({ request }) => {
@@ -275,10 +358,18 @@ export const handlersByDomain: Record<MockDomain, HttpHandler[]> = {
   matches: matchesHandlers,
   chat: chatHandlers,
   users: usersHandlers,
-  devices: devicesHandlers
+  devices: devicesHandlers,
+  account: accountHandlers
 };
 
 export const handlers = Object.values(handlersByDomain).flat();
+
+function withAttendance(evt: typeof events[number]) {
+  // Mirror the backend shape: every joined fellow counts. For NeurIPS the seeder puts every
+  // demo user in; ACL is a subset; ICML is expired. matchesForEvent(_,200) returns one row per
+  // peer, so +1 accounts for the current user themselves.
+  return { ...evt, attendanceCount: matchesForEvent(evt.eventId, 200).length + 1 };
+}
 
 function extractKeywordsMock(text: string): string[] {
   const pool = [

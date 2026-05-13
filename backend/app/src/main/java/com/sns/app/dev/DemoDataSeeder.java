@@ -16,7 +16,9 @@ import com.sns.interest.domain.InterestType;
 import com.sns.interest.repo.InterestRepository;
 import com.sns.matching.app.MatchingService;
 import com.sns.profile.domain.ProfileEntity;
+import com.sns.profile.domain.UserSettingsEntity;
 import com.sns.profile.repo.ProfileRepository;
+import com.sns.profile.repo.UserSettingsRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -27,12 +29,9 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -40,15 +39,21 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Populates Postgres with the same demo dataset the MSW mocks ship under
  * {@code web/lib/fixtures/} — 21 users with portraits, NeurIPS 2026 + ACL 2026 participations
  * with venue-clustered PostGIS positions, a few interests per user (so matching has real input),
- * recomputed similarity matches, and the 6 chat threads from the mock fixtures.
+ * recomputed similarity matches, the 6 chat threads from the mock fixtures, and a default
+ * {@code user_settings} row per user.
  *
  * <p>Opt-in via {@code sns.dev.seed-demo-data=true}. Default off so a vanilla dev boot keeps the
- * lightweight events-only seed. Idempotent via the sentinel user {@code you@example.com}: if it
- * already exists the entire seed short-circuits, so re-runs cost a single SELECT.
+ * lightweight events-only seed. {@link #seed()} is idempotent via the sentinel user
+ * {@code you@example.com}: if it already exists the entire seed short-circuits, so re-runs cost
+ * a single SELECT.
+ *
+ * <p>{@link #reset()} deletes the seeded users (cascade wipes profiles, interests, participations,
+ * matches, chat history, settings, refresh tokens), then calls {@link #seed()} again. The audit
+ * log survives (no FK on actor_user_id). Used by the dev-only Settings → "Reset demo data" button.
  *
  * <p>Demo login: {@code you@example.com} / {@code Demo!2026} — Alex Chen, ETH Zurich.
  */
-@Configuration
+@Component
 @ConditionalOnProperty(name = "sns.dev.seed-demo-data", havingValue = "true")
 public class DemoDataSeeder {
 
@@ -259,11 +264,23 @@ public class DemoDataSeeder {
             "Bonjour Jean! Yes, I'm curious if INRIA's latest work is open-source?", 6)
     );
 
-    @Bean
-    @Order(20) // After DevSeedRunner (@Order(10)) so the demo events exist by the time we look them up.
-    ApplicationRunner runDemoSeed(
+    private final UserRepository users;
+    private final ProfileRepository profiles;
+    private final UserSettingsRepository userSettings;
+    private final EventRepository events;
+    private final ParticipationRepository participations;
+    private final ChatMessageRepository chatRepo;
+    private final QrCodeService qr;
+    private final InterestRepository interestRepo;
+    private final KeywordExtractor keywordExtractor;
+    private final MatchingService matchingService;
+    private final PasswordEncoder passwordEncoder;
+    private final TransactionTemplate tx;
+
+    public DemoDataSeeder(
         UserRepository users,
         ProfileRepository profiles,
+        UserSettingsRepository userSettings,
         EventRepository events,
         ParticipationRepository participations,
         ChatMessageRepository chatRepo,
@@ -274,125 +291,161 @@ public class DemoDataSeeder {
         PasswordEncoder passwordEncoder,
         PlatformTransactionManager txMgr
     ) {
-        TransactionTemplate tx = new TransactionTemplate(txMgr);
-        return args -> {
-            if (users.findByEmailIgnoreCase(SENTINEL_EMAIL).isPresent()) {
-                log.info("DemoDataSeeder: sentinel {} already present — skipping demo seed", SENTINEL_EMAIL);
-                return;
+        this.users = users;
+        this.profiles = profiles;
+        this.userSettings = userSettings;
+        this.events = events;
+        this.participations = participations;
+        this.chatRepo = chatRepo;
+        this.qr = qr;
+        this.interestRepo = interestRepo;
+        this.keywordExtractor = keywordExtractor;
+        this.matchingService = matchingService;
+        this.passwordEncoder = passwordEncoder;
+        this.tx = new TransactionTemplate(txMgr);
+    }
+
+    /**
+     * Seed the demo dataset. Idempotent: short-circuits if the sentinel user is already present.
+     * Called both at boot (via {@link DemoDataSeederRunner}) and from {@link #reset()}.
+     */
+    public void seed() {
+        if (users.findByEmailIgnoreCase(SENTINEL_EMAIL).isPresent()) {
+            log.info("DemoDataSeeder: sentinel {} already present — skipping demo seed", SENTINEL_EMAIL);
+            return;
+        }
+
+        EventEntity neurips = events.findByQrCodeHash(qr.hash("NEURIPS2026"))
+            .orElseThrow(() -> new IllegalStateException(
+                "DemoDataSeeder requires sns.dev.seed-events=true (NEURIPS2026 missing)"));
+        EventEntity acl = events.findByQrCodeHash(qr.hash("ACL2026"))
+            .orElseThrow(() -> new IllegalStateException(
+                "DemoDataSeeder requires sns.dev.seed-events=true (ACL2026 missing)"));
+
+        // Phase 1: users + profiles + user_settings + NeurIPS participations.
+        // One transaction so a partial failure rolls back cleanly. The sentinel check above
+        // guards against picking up a half-seeded DB on retry.
+        String seedHash = passwordEncoder.encode(SEED_PASSWORD);
+        int userCount = tx.execute(status -> {
+            int n = 0;
+            for (SeedUser u : USERS) {
+                UUID userId = seedUuid("user:" + u.mockId());
+                UserEntity ue = new UserEntity();
+                ue.setUserId(userId);
+                ue.setEmail(u.email());
+                ue.setEmailVerified(true);
+                ue.setPasswordHash(seedHash);
+                ue.setRole(roleFor(u.mockId()));
+                users.save(ue);
+
+                ProfileEntity pe = new ProfileEntity();
+                pe.setUserId(userId);
+                pe.setFirstName(u.first());
+                pe.setLastName(u.last());
+                pe.setAcademicTitle(u.title());
+                pe.setInstitution(u.institution());
+                pe.setProfilePictureUrl(u.avatar());
+                profiles.save(pe);
+
+                // Default settings — matches the V12 column defaults.
+                UserSettingsEntity se = new UserSettingsEntity();
+                se.setUserId(userId);
+                userSettings.save(se);
+
+                participations.save(participation(
+                    userId, neurips.getEventId(), NEURIPS_LAT, NEURIPS_LON, u.mockId()));
+                n++;
             }
+            return n;
+        });
 
-            EventEntity neurips = events.findByQrCodeHash(qr.hash("NEURIPS2026"))
-                .orElseThrow(() -> new IllegalStateException(
-                    "DemoDataSeeder requires sns.dev.seed-events=true (NEURIPS2026 missing)"));
-            EventEntity acl = events.findByQrCodeHash(qr.hash("ACL2026"))
-                .orElseThrow(() -> new IllegalStateException(
-                    "DemoDataSeeder requires sns.dev.seed-events=true (ACL2026 missing)"));
+        // Phase 2: ACL participations for the mock subset.
+        int aclCount = tx.execute(status -> {
+            int n = 0;
+            for (String mockId : ACL_PARTICIPANTS) {
+                UUID userId = seedUuid("user:" + mockId);
+                participations.save(participation(
+                    userId, acl.getEventId(), ACL_LAT, ACL_LON, mockId));
+                n++;
+            }
+            return n;
+        });
 
-            // Phase 1: users + profiles + NeurIPS participations.
-            // One transaction so a partial failure rolls back cleanly. The sentinel check above
-            // guards against picking up a half-seeded DB on retry.
-            String seedHash = passwordEncoder.encode(SEED_PASSWORD);
-            int userCount = tx.execute(status -> {
-                int n = 0;
-                for (SeedUser u : USERS) {
-                    UUID userId = seedUuid("user:" + u.mockId());
-                    UserEntity ue = new UserEntity();
-                    ue.setUserId(userId);
-                    ue.setEmail(u.email());
-                    ue.setEmailVerified(true);
-                    ue.setPasswordHash(seedHash);
-                    ue.setRole(roleFor(u.mockId()));
-                    users.save(ue);
-
-                    ProfileEntity pe = new ProfileEntity();
-                    pe.setUserId(userId);
-                    pe.setFirstName(u.first());
-                    pe.setLastName(u.last());
-                    pe.setAcademicTitle(u.title());
-                    pe.setInstitution(u.institution());
-                    pe.setProfilePictureUrl(u.avatar());
-                    profiles.save(pe);
-
-                    participations.save(participation(
-                        userId, neurips.getEventId(), NEURIPS_LAT, NEURIPS_LON, u.mockId()));
+        // Phase 3: interests. We bypass InterestService.create on purpose — it publishes
+        // UserInterestsChanged, and MatchingEventListener handles that with @Async, which
+        // races with itself across 21 parallel users and trips the (event_id, user_id_a,
+        // user_id_b) unique index. We still run the real KeywordExtractor so populated
+        // extracted_keywords + keyword_vector look identical to a real interest creation;
+        // the single recompute() in Phase 4 below is then the only writer to similarity_matches.
+        int interestCount = tx.execute(status -> {
+            int n = 0;
+            for (SeedUser u : USERS) {
+                UUID userId = seedUuid("user:" + u.mockId());
+                for (SeedInterest si : u.interests()) {
+                    KeywordExtractor.Extraction ex = keywordExtractor.extract(si.content());
+                    InterestEntity e = new InterestEntity();
+                    e.setUserId(userId);
+                    e.setType(si.type());
+                    e.setContent(si.content());
+                    e.setArticleUrl(si.articleUrl());
+                    e.setExtractedKeywords(ex.keywordsArray());
+                    e.setKeywordVector(ex.vector());
+                    interestRepo.save(e);
                     n++;
                 }
-                return n;
-            });
+            }
+            return n;
+        });
 
-            // Phase 2: ACL participations for the mock subset.
-            int aclCount = tx.execute(status -> {
-                int n = 0;
-                for (String mockId : ACL_PARTICIPANTS) {
-                    UUID userId = seedUuid("user:" + mockId);
-                    participations.save(participation(
-                        userId, acl.getEventId(), ACL_LAT, ACL_LON, mockId));
-                    n++;
-                }
-                return n;
-            });
+        // Phase 4: trigger a full recompute on both active events. The
+        // UserInterestsChanged listener already ran per-interest above (incremental), but a
+        // final full sweep guarantees every pair has been considered.
+        int neuripsMatches = matchingService.recompute(neurips.getEventId());
+        int aclMatches = matchingService.recompute(acl.getEventId());
 
-            // Phase 3: interests. We bypass InterestService.create on purpose — it publishes
-            // UserInterestsChanged, and MatchingEventListener handles that with @Async, which
-            // races with itself across 21 parallel users and trips the (event_id, user_id_a,
-            // user_id_b) unique index. We still run the real KeywordExtractor so populated
-            // extracted_keywords + keyword_vector look identical to a real interest creation;
-            // the single recompute() in Phase 4 below is then the only writer to similarity_matches.
-            int interestCount = tx.execute(status -> {
-                int n = 0;
-                for (SeedUser u : USERS) {
-                    UUID userId = seedUuid("user:" + u.mockId());
-                    for (SeedInterest si : u.interests()) {
-                        KeywordExtractor.Extraction ex = keywordExtractor.extract(si.content());
-                        InterestEntity e = new InterestEntity();
-                        e.setUserId(userId);
-                        e.setType(si.type());
-                        e.setContent(si.content());
-                        e.setArticleUrl(si.articleUrl());
-                        e.setExtractedKeywords(ex.keywordsArray());
-                        e.setKeywordVector(ex.vector());
-                        interestRepo.save(e);
-                        n++;
-                    }
-                }
-                return n;
-            });
+        // Phase 5: chat history — direct repo writes so we can pin createdAt to the same
+        // "minutes-ago" deltas the mock uses, set readFlag=true in one shot, and avoid
+        // generating push-outbox rows that would never reach a real device.
+        int chatCount = tx.execute(status -> {
+            int n = 0;
+            OffsetDateTime now = OffsetDateTime.now();
+            for (int i = 0; i < CHATS.size(); i++) {
+                SeedChat c = CHATS.get(i);
+                ChatMessageEntity m = new ChatMessageEntity();
+                m.setMessageId(seedUuid("chat:" + i + ":" + c.fromMockId() + ":" + c.toMockId()));
+                m.setEventId(neurips.getEventId());
+                m.setFromUserId(seedUuid("user:" + c.fromMockId()));
+                m.setToUserId(seedUuid("user:" + c.toMockId()));
+                m.setContent(c.text());
+                m.setReadFlag(true);
+                m.setClientMessageId("seed:" + i);
+                m.setCreatedAt(now.minusMinutes(c.minutesAgo()));
+                chatRepo.save(m);
+                n++;
+            }
+            return n;
+        });
 
-            // Phase 4: trigger a full recompute on both active events. The
-            // UserInterestsChanged listener already ran per-interest above (incremental), but a
-            // final full sweep guarantees every pair has been considered.
-            int neuripsMatches = matchingService.recompute(neurips.getEventId());
-            int aclMatches = matchingService.recompute(acl.getEventId());
+        log.info("DemoDataSeeder: seeded {} users / {} NeurIPS participants / {} ACL participants / "
+            + "{} interests / {} NeurIPS matches / {} ACL matches / {} chat messages — "
+            + "login as {} / {}",
+            userCount, userCount, aclCount, interestCount,
+            neuripsMatches, aclMatches, chatCount, SENTINEL_EMAIL, SEED_PASSWORD);
+    }
 
-            // Phase 5: chat history — direct repo writes so we can pin createdAt to the same
-            // "minutes-ago" deltas the mock uses, set readFlag=true in one shot, and avoid
-            // generating push-outbox rows that would never reach a real device.
-            int chatCount = tx.execute(status -> {
-                int n = 0;
-                OffsetDateTime now = OffsetDateTime.now();
-                for (int i = 0; i < CHATS.size(); i++) {
-                    SeedChat c = CHATS.get(i);
-                    ChatMessageEntity m = new ChatMessageEntity();
-                    m.setMessageId(seedUuid("chat:" + i + ":" + c.fromMockId() + ":" + c.toMockId()));
-                    m.setEventId(neurips.getEventId());
-                    m.setFromUserId(seedUuid("user:" + c.fromMockId()));
-                    m.setToUserId(seedUuid("user:" + c.toMockId()));
-                    m.setContent(c.text());
-                    m.setReadFlag(true);
-                    m.setClientMessageId("seed:" + i);
-                    m.setCreatedAt(now.minusMinutes(c.minutesAgo()));
-                    chatRepo.save(m);
-                    n++;
-                }
-                return n;
-            });
-
-            log.info("DemoDataSeeder: seeded {} users / {} NeurIPS participants / {} ACL participants / "
-                + "{} interests / {} NeurIPS matches / {} ACL matches / {} chat messages — "
-                + "login as {} / {}",
-                userCount, userCount, aclCount, interestCount,
-                neuripsMatches, aclMatches, chatCount, SENTINEL_EMAIL, SEED_PASSWORD);
-        };
+    /**
+     * Delete every seeded user (cascade wipes profiles, user_settings, interests, participations,
+     * matches, chat history, refresh tokens, sns_links, device_tokens), then re-seed. Non-seeded
+     * accounts and the immutable audit_log are preserved. Backs the dev Settings → "Reset demo
+     * data" button.
+     */
+    public void reset() {
+        tx.executeWithoutResult(status -> {
+            for (SeedUser u : USERS) {
+                users.findByEmailIgnoreCase(u.email()).ifPresent(users::delete);
+            }
+        });
+        seed();
     }
 
     private static SeedInterest interest(String content) {

@@ -6,12 +6,15 @@ import com.sns.chat.repo.ChatMessageRepository;
 import com.sns.profile.domain.ProfileEntity;
 import com.sns.profile.repo.ProfileRepository;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,21 +25,64 @@ public class ChatService {
     private final ChatMessageRepository repo;
     private final ProfileRepository profiles;
     private final ApplicationEventPublisher publisher;
+    private final JdbcTemplate jdbc;
 
     public ChatService(
         ChatMessageRepository repo,
         ProfileRepository profiles,
-        ApplicationEventPublisher publisher
+        ApplicationEventPublisher publisher,
+        JdbcTemplate jdbc
     ) {
         this.repo = repo;
         this.profiles = profiles;
         this.publisher = publisher;
+        this.jdbc = jdbc;
     }
 
     @Transactional(readOnly = true)
     public List<ChatDtos.ChatMessage> history(UUID eventId, UUID me, UUID other, OffsetDateTime since) {
         return repo.findPair(eventId, me, other, since).stream()
             .map(ChatService::toDto).toList();
+    }
+
+    /**
+     * Peer profile + commonKeywords for the canonical similarity match in this event. Returns
+     * {@code commonKeywords = []} when no match exists yet (e.g. two attendees with disjoint
+     * interests, or before the matching sweep has run).
+     */
+    @Transactional(readOnly = true)
+    public ChatDtos.PeerContext peerContext(UUID eventId, UUID me, UUID other) {
+        ProfileEntity p = profiles.findById(other).orElse(null);
+        List<String> common = lookupCommonKeywords(eventId, me, other);
+        return new ChatDtos.PeerContext(
+            other,
+            p == null ? null : p.getFirstName(),
+            p == null ? null : p.getLastName(),
+            p == null ? null : p.getAcademicTitle(),
+            p == null ? null : p.getInstitution(),
+            p == null ? null : p.getProfilePictureUrl(),
+            common
+        );
+    }
+
+    private List<String> lookupCommonKeywords(UUID eventId, UUID a, UUID b) {
+        if (a == null || b == null) return List.of();
+        UUID lo = a.compareTo(b) < 0 ? a : b;
+        UUID hi = a.compareTo(b) < 0 ? b : a;
+        try {
+            String[] row = jdbc.queryForObject(
+                "SELECT common_keywords FROM similarity_matches "
+                  + "WHERE event_id = ? AND user_id_a = ? AND user_id_b = ?",
+                (rs, n) -> {
+                    java.sql.Array arr = rs.getArray(1);
+                    return arr == null ? new String[0] : (String[]) arr.getArray();
+                },
+                eventId, lo, hi
+            );
+            return row == null ? List.of() : Arrays.asList(row);
+        } catch (EmptyResultDataAccessException e) {
+            return List.of();
+        }
     }
 
     @Transactional

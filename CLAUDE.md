@@ -48,7 +48,15 @@ Backend surface lives in [`backend/app/src/main/java/com/sns/app/admin/`](backen
 
 ### Cross-module enrichment notes
 
-`/api/chats` returns enriched [`ChatDtos.ChatThread`](backend/chat/src/main/java/com/sns/chat/api/dto/ChatDtos.java) rows — `otherName`, `otherInstitution`, `otherPictureUrl`, `lastMessagePreview`, `unread` — built by [`ChatService.listThreads`](backend/chat/src/main/java/com/sns/chat/app/ChatService.java) which joins the per-thread head messages against `ProfileRepository` and counts unread per (event, peer) tuple. `:chat` `api`-depends on `:profile` for this; participant module deps remain acyclic.
+`/api/chats` returns enriched [`ChatDtos.ChatThread`](backend/chat/src/main/java/com/sns/chat/api/dto/ChatDtos.java) rows — `otherName`, `otherInstitution`, `otherPictureUrl`, `lastMessagePreview`, `unread` — built by [`ChatService.listThreads`](backend/chat/src/main/java/com/sns/chat/app/ChatService.java) which joins the per-thread head messages against `ProfileRepository` and counts unread per (event, peer) tuple. `:chat` `api`-depends on `:profile` for this; participant module deps remain acyclic. `GET /api/chat/{eventId}/{otherUserId}` returns `{messages, peer}` where `peer` carries the other party's profile fields plus the `commonKeywords` array from `similarity_matches` (looked up via JdbcTemplate in `ChatService`), so the chat screen doesn't need a separate match call.
+
+### User preferences
+
+[`/api/profile/settings`](backend/profile/src/main/java/com/sns/profile/api/UserSettingsController.java) (GET/PUT) persists per-user preferences (`pushMatches`, `pushChat`, `gpsConsent`, `keepRegister`, `language`). Backed by the `user_settings` table from Flyway V12 (one row per user, FK-cascade on user delete; defaults match the column defaults). The seeder inserts a defaults row per demo user; new users get a row written lazily on first GET. PUT emits an `profile.settings.update` audit row.
+
+### Dev-only reset endpoint
+
+`POST /api/admin/dev/reset-demo` (in [`backend/app/.../dev/DevAdminController.java`](backend/app/src/main/java/com/sns/app/dev/DevAdminController.java)) lets a `SUPER_ADMIN` wipe + re-seed every seeded demo user (cascading through profiles, interests, participations, matches, chats, settings, refresh tokens). Conditional on `sns.dev.seed-demo-data=true` and `@Profile("!prod")`, so it never spins up under prod. The audit row writes *before* the actor's own user_id is deleted; the JWT will be invalid afterwards, which is the intended signal to re-login. Wired into the Study tab's "Reset demo data" action.
 
 ### Frontend auth quirks
 
@@ -72,7 +80,7 @@ docker compose -f docker-compose.dev.yml --profile backend up -d --build
 # + web (builds from web/Dockerfile.dev, runs `next dev` with bind-mounted source for HMR)
 docker compose -f docker-compose.dev.yml --profile backend --profile web up -d --build
 ```
-The `web` container reaches the backend via `BACKEND_PROXY_TARGET=http://backend:8080` (Next.js rewrite). Default `NEXT_PUBLIC_MOCK_API=1` keeps MSW mocks active inside the container — flip to `"0"` in the compose env to drive the real backend.
+The `web` container reaches the backend via `BACKEND_PROXY_TARGET=http://backend:8080` (Next.js rewrite). Default `NEXT_PUBLIC_MOCK_API=0` everywhere — every `/api/*` call hits the real backend out of the box. Set it to `"1"` (or a CSV like `"chat"` for one domain) only when iterating on UI without standing up Postgres + Redis. The MSW handlers in [`web/lib/api/mocks/handlers.ts`](web/lib/api/mocks/handlers.ts) are retained as the fast path for frontend-only dev and as the contract sanity-check that backs `tools/openapi-diff.sh`.
 
 ### Wiring web against real backend
 In `web/.env.local`:

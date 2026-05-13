@@ -27,7 +27,10 @@ public class ChatController {
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime since
     ) {
         var me = UUID.fromString(auth.getToken().getSubject());
-        return new ChatDtos.HistoryResponse(service.history(eventId, me, otherUserId, since));
+        return new ChatDtos.HistoryResponse(
+            service.history(eventId, me, otherUserId, since),
+            service.peerContext(eventId, me, otherUserId)
+        );
     }
 
     @GetMapping("/api/chats")

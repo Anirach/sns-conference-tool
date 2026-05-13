@@ -1,13 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Bell,
   ChevronRight,
   Database,
-  Globe,
   HardDrive,
   Heart,
   Info,
@@ -15,6 +14,7 @@ import {
   Lock,
   LogOut,
   RotateCcw,
+  Trash2,
   User as UserIcon
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -22,23 +22,18 @@ import { UserAvatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { accountApi } from "@/lib/api/account";
+import { adminApi } from "@/lib/api/admin";
+import { authApi } from "@/lib/api/auth";
+import { exportApi } from "@/lib/api/export";
 import { profileApi } from "@/lib/api/profile";
-import { getItem, setItem } from "@/lib/native/storage";
-import { useAuthStore } from "@/lib/state/authStore";
-import type { UserSettings } from "@/lib/fixtures/types";
-
-const SETTINGS_KEY = "settings";
-const DEFAULTS: UserSettings = {
-  pushMatches: true,
-  pushChat: true,
-  gpsConsent: true,
-  localStorageOptIn: false,
-  language: "en"
-};
+import { settingsApi, type UserSettings } from "@/lib/api/settings";
+import { useAuthStore, useIsAdmin } from "@/lib/state/authStore";
 
 interface Row {
   icon: React.ReactNode;
   label: string;
+  href?: string;
   onClick?: () => void;
   trailing?: React.ReactNode;
   danger?: boolean;
@@ -49,26 +44,36 @@ function Section({ title, rows }: { title: string; rows: Row[] }) {
     <div>
       <p className="eyebrow mb-3 text-brass-500">{title}</p>
       <div className="bg-card hairline">
-        {rows.map((r, i) => (
-          <button
-            key={i}
-            onClick={r.onClick}
-            type="button"
-            className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-muted ${
-              i > 0 ? "hairline-t" : ""
-            } ${r.danger ? "text-danger" : ""}`}
-          >
-            <span
-              className={`grid h-8 w-8 place-items-center hairline ${
-                r.danger ? "bg-danger/10 text-danger" : "bg-brand-50 text-brand-500"
-              }`}
-            >
-              {r.icon}
-            </span>
-            <span className="flex-1 font-serif text-sm text-foreground">{r.label}</span>
-            {r.trailing ?? <ChevronRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />}
-          </button>
-        ))}
+        {rows.map((r, i) => {
+          const content = (
+            <>
+              <span
+                className={`grid h-8 w-8 place-items-center hairline ${
+                  r.danger ? "bg-danger/10 text-danger" : "bg-brand-50 text-brand-500"
+                }`}
+              >
+                {r.icon}
+              </span>
+              <span className="flex-1 font-serif text-sm text-foreground">{r.label}</span>
+              {r.trailing ?? <ChevronRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />}
+            </>
+          );
+          const cls = `flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-muted ${
+            i > 0 ? "hairline-t" : ""
+          } ${r.danger ? "text-danger" : ""}`;
+          if (r.href) {
+            return (
+              <Link key={i} href={r.href} className={cls}>
+                {content}
+              </Link>
+            );
+          }
+          return (
+            <button key={i} onClick={r.onClick} type="button" className={cls}>
+              {content}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -77,35 +82,100 @@ function Section({ title, rows }: { title: string; rows: Row[] }) {
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const tokens = useAuthStore((s) => s.tokens);
   const signOut = useAuthStore((s) => s.signOut);
-  const [settings, setSettings] = useState<UserSettings>(DEFAULTS);
+  const isAdmin = useIsAdmin();
+
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => (await profileApi.get()).data
   });
 
-  useEffect(() => {
-    const raw = getItem(`settings.${SETTINGS_KEY}`);
-    if (raw) {
-      try {
-        setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
-      } catch {
-        /* ignore — fall back to defaults */
-      }
-    }
-  }, []);
+  const { data: settings } = useQuery({
+    queryKey: ["profile", "settings"],
+    queryFn: async () => (await settingsApi.get()).data
+  });
 
-  function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
-    const next = { ...settings, [key]: value };
-    setSettings(next);
-    setItem(`settings.${SETTINGS_KEY}`, JSON.stringify(next));
+  const updateSettings = useMutation({
+    mutationFn: (patch: Partial<UserSettings>) => settingsApi.update(patch),
+    onMutate: async (patch) => {
+      // Optimistic — toggles feel instant; rollback on failure.
+      await queryClient.cancelQueries({ queryKey: ["profile", "settings"] });
+      const prev = queryClient.getQueryData<UserSettings>(["profile", "settings"]);
+      if (prev) queryClient.setQueryData<UserSettings>(["profile", "settings"], { ...prev, ...patch });
+      return { prev };
+    },
+    onError: (_e, _patch, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["profile", "settings"], ctx.prev);
+      toast({ title: "Couldn’t save preference" });
+    },
+    onSuccess: (res) => queryClient.setQueryData(["profile", "settings"], res.data)
+  });
+
+  function set<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
+    updateSettings.mutate({ [key]: value } as Partial<UserSettings>);
   }
 
-  function onSignOut() {
+  async function onSignOut() {
+    try {
+      if (tokens?.refreshToken) {
+        await authApi.logout(tokens.refreshToken);
+      }
+    } catch {
+      // Backend may already have revoked the token — sign out locally regardless.
+    }
     signOut();
     toast({ title: "Adjourned" });
     router.push("/");
   }
+
+  async function onExport() {
+    try {
+      const res = await exportApi.download();
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sns-dossier-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast({ title: "Export failed" });
+    }
+  }
+
+  async function onSoftDelete() {
+    if (!confirm("Delete your account? Your data is removed after 30 days.")) return;
+    try {
+      await accountApi.softDelete();
+      signOut();
+      toast({ title: "Account scheduled for deletion" });
+      router.push("/");
+    } catch {
+      toast({ title: "Couldn’t delete account" });
+    }
+  }
+
+  async function onResetDemo() {
+    if (!confirm("Reset demo data? Every demo fellow’s profile, interests, matches, and chats will be re-seeded from scratch.")) {
+      return;
+    }
+    try {
+      await adminApi.dev.resetDemo();
+      toast({ title: "Demo data reset" });
+      // The actor’s row was just deleted and re-seeded; sign out so the next login mints
+      // a fresh JWT under the new user_id.
+      signOut();
+      router.push("/login");
+    } catch {
+      toast({ title: "Reset unavailable (prod mode)" });
+    }
+  }
+
+  const s = settings ?? { pushMatches: true, pushChat: true, gpsConsent: true, keepRegister: false, language: "en" as const };
 
   return (
     <AppShell title="Study" eyebrow="Settings">
@@ -136,25 +206,13 @@ export default function SettingsPage() {
         <Section
           title="Account"
           rows={[
-            {
-              icon: <UserIcon className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Edit particulars",
-              onClick: () => router.push("/profile")
-            },
-            {
-              icon: <Heart className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Edit inquiries",
-              onClick: () => router.push("/interests")
-            },
-            {
-              icon: <Link2 className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Linked societies",
-              onClick: () => router.push("/profile/sns")
-            }
+            { icon: <UserIcon className="h-4 w-4" strokeWidth={1.5} />, label: "Edit particulars", href: "/profile" },
+            { icon: <Heart className="h-4 w-4" strokeWidth={1.5} />, label: "Edit inquiries", href: "/interests" },
+            { icon: <Link2 className="h-4 w-4" strokeWidth={1.5} />, label: "Linked societies", href: "/profile/sns" }
           ]}
         />
 
-        <div>
+        <div id="correspondence">
           <p className="eyebrow mb-3 text-brass-500">Correspondence</p>
           <div className="bg-card hairline">
             <Row
@@ -162,8 +220,8 @@ export default function SettingsPage() {
               description="Push when someone matches with you."
               trailing={
                 <Toggle
-                  checked={settings.pushMatches}
-                  onCheckedChange={(v) => update("pushMatches", v)}
+                  checked={s.pushMatches}
+                  onCheckedChange={(v) => set("pushMatches", v)}
                   ariaLabel="Match notifications"
                 />
               }
@@ -174,8 +232,8 @@ export default function SettingsPage() {
               description="Push when someone writes to you."
               trailing={
                 <Toggle
-                  checked={settings.pushChat}
-                  onCheckedChange={(v) => update("pushChat", v)}
+                  checked={s.pushChat}
+                  onCheckedChange={(v) => set("pushChat", v)}
                   ariaLabel="Chat notifications"
                 />
               }
@@ -191,8 +249,8 @@ export default function SettingsPage() {
               description="Required for proximity matching. Deleted when the session adjourns."
               trailing={
                 <Toggle
-                  checked={settings.gpsConsent}
-                  onCheckedChange={(v) => update("gpsConsent", v)}
+                  checked={s.gpsConsent}
+                  onCheckedChange={(v) => set("gpsConsent", v)}
                   ariaLabel="GPS consent"
                 />
               }
@@ -203,9 +261,9 @@ export default function SettingsPage() {
               description="Store matches on this device to revisit after the session."
               trailing={
                 <Toggle
-                  checked={settings.localStorageOptIn}
-                  onCheckedChange={(v) => update("localStorageOptIn", v)}
-                  ariaLabel="Local storage opt-in"
+                  checked={s.keepRegister}
+                  onCheckedChange={(v) => set("keepRegister", v)}
+                  ariaLabel="Local register opt-in"
                 />
               }
             />
@@ -219,9 +277,9 @@ export default function SettingsPage() {
               <button
                 key={lang}
                 type="button"
-                onClick={() => update("language", lang)}
+                onClick={() => set("language", lang)}
                 className={`rounded-sm bg-card py-2.5 font-serif text-sm transition-colors hairline ${
-                  settings.language === lang
+                  s.language === lang
                     ? "border-brass-500 bg-brass-50 text-brass-700"
                     : "text-foreground/60 hover:text-foreground"
                 }`}
@@ -235,48 +293,31 @@ export default function SettingsPage() {
         <Section
           title="Data"
           rows={[
-            {
-              icon: <HardDrive className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Export my dossier",
-              onClick: () => toast({ title: "Export will be posted (mock)" })
-            },
-            {
-              icon: <Database className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Local register",
-              onClick: () => toast({ title: "Opened (mock)" })
-            },
-            {
-              icon: <Bell className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Notifications",
-              onClick: () => toast({ title: "Already here" })
-            }
+            { icon: <HardDrive className="h-4 w-4" strokeWidth={1.5} />, label: "Export my dossier", onClick: onExport },
+            { icon: <Database className="h-4 w-4" strokeWidth={1.5} />, label: "Local register", href: "/me/register" },
+            { icon: <Bell className="h-4 w-4" strokeWidth={1.5} />, label: "Notifications", href: "#correspondence" }
           ]}
         />
 
         <Section
           title="About"
           rows={[
+            { icon: <Info className="h-4 w-4" strokeWidth={1.5} />, label: "Version v0.1.0", trailing: <span /> },
+            { icon: <Lock className="h-4 w-4" strokeWidth={1.5} />, label: "Privacy policy", href: "/privacy" },
+            ...(isAdmin
+              ? [
+                  {
+                    icon: <RotateCcw className="h-4 w-4" strokeWidth={1.5} />,
+                    label: "Reset demo data",
+                    onClick: onResetDemo
+                  } as Row
+                ]
+              : []),
             {
-              icon: <Info className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Version v0.1.0",
-              trailing: <span />
-            },
-            {
-              icon: <Lock className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Privacy policy",
-              onClick: () => toast({ title: "Demo only" })
-            },
-            {
-              icon: <Globe className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Reset demo data",
-              onClick: () =>
-                typeof window !== "undefined" ? window.location.reload() : toast({ title: "Reloaded" })
-            },
-            {
-              icon: <RotateCcw className="h-4 w-4" strokeWidth={1.5} />,
-              label: "Adjourn account",
+              icon: <Trash2 className="h-4 w-4" strokeWidth={1.5} />,
+              label: "Delete my account",
               danger: true,
-              onClick: onSignOut,
+              onClick: onSoftDelete,
               trailing: <span />
             }
           ]}

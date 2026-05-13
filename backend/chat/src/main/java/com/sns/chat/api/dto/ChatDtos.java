@@ -23,7 +23,22 @@ public final class ChatDtos {
         OffsetDateTime createdAt
     ) {}
 
-    public record HistoryResponse(List<ChatMessage> messages) {}
+    public record HistoryResponse(List<ChatMessage> messages, PeerContext peer) {}
+
+    /**
+     * Peer profile fields + the commonKeywords list from the canonical similarity match (when
+     * one exists). Lets the chat screen render the header + the "you matched on …" banner
+     * without a fixture lookup or a second round-trip.
+     */
+    public record PeerContext(
+        UUID userId,
+        String firstName,
+        String lastName,
+        String title,
+        String institution,
+        String pictureUrl,
+        List<String> commonKeywords
+    ) {}
 
     public record SendRequest(
         @NotNull UUID eventId,

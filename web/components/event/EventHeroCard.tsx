@@ -56,7 +56,7 @@ export function EventHeroCard({ event, attendance }: EventHeroCardProps) {
         <div>
           <p className="eyebrow text-background/50">In Attendance</p>
           <p className="mt-0.5 inline-flex items-center gap-1.5 font-serif text-lg tabular-nums">
-            <Users className="h-3.5 w-3.5" strokeWidth={1.5} /> {attendance ?? 42}
+            <Users className="h-3.5 w-3.5" strokeWidth={1.5} /> {attendance ?? 0}
           </p>
         </div>
       </div>

@@ -1,8 +1,19 @@
 import api from "./axios";
 import type { ChatMessage, ChatThread } from "../fixtures/types";
 
+export interface PeerContext {
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  title: string | null;
+  institution: string | null;
+  pictureUrl: string | null;
+  commonKeywords: string[];
+}
+
 export interface ChatHistory {
   messages: ChatMessage[];
+  peer: PeerContext;
 }
 
 export const chatApi = {
