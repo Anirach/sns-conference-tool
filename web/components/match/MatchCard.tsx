@@ -9,12 +9,13 @@ import type { Match } from "@/lib/fixtures/types";
 
 interface MatchCardProps {
   match: Match;
-  /** @deprecated no longer used — MatchCard links to /matches/:matchId directly. Kept for API stability. */
+  /** Used as the chat-fallback destination when the vicinity row has no matchId
+   *  (LEFT JOIN against similarity_matches returns null for peers with no precomputed match). */
   eventId?: string;
   index?: number;
 }
 
-export function MatchCard({ match, index }: MatchCardProps) {
+export function MatchCard({ match, eventId, index }: MatchCardProps) {
   const pct = Math.round(match.similarity * 100);
   const parts = match.name.split(" ").filter(Boolean);
   const first = parts[0] ?? "";
@@ -22,9 +23,15 @@ export function MatchCard({ match, index }: MatchCardProps) {
   const visible = match.commonKeywords.slice(0, 3);
   const extra = match.commonKeywords.length - visible.length;
 
+  // No precomputed similarity_matches row → no dossier exists; fall back to chat so the
+  // card still leads somewhere useful instead of routing to /matches/null → 404.
+  const href = match.matchId
+    ? `/matches/${match.matchId}`
+    : `/events/${eventId ?? match.eventId}/chat/${match.otherUserId}`;
+
   return (
     <Link
-      href={`/matches/${match.matchId}`}
+      href={href}
       className="group block bg-card px-1 py-5 transition-colors hover:bg-surface-muted hairline-b"
     >
       <article className="grid grid-cols-[64px_1fr_auto] items-start gap-4">
