@@ -17,16 +17,36 @@ export default function ChatPage() {
   const { eventId, otherId } = useParams<{ eventId: string; otherId: string }>();
   const router = useRouter();
 
+  // Chat is realtime — override the global 30s staleTime so the page polls every 4s and
+  // always refetches on mount / focus. This keeps the receiver in sync when WebSocket is
+  // unavailable (e.g. a reverse-proxy that doesn't forward upgrades) and guarantees the
+  // latest persisted history shows the moment the page is reopened.
   const { data } = useQuery<ChatHistory>({
     queryKey: ["chat", eventId, otherId],
-    queryFn: async () => (await chatApi.history(eventId, otherId)).data
+    queryFn: async () => (await chatApi.history(eventId, otherId)).data,
+    staleTime: 0,
+    refetchInterval: 4000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true
   });
 
   const { messages, setMessages, send } = useChat(eventId, otherId);
   const [bannerOpen, setBannerOpen] = useState(true);
 
+  // Merge fetched history with any locally-appended (WS / REST optimistic) messages instead
+  // of replacing. Without this, a WS push that lands between two polls is clobbered by the
+  // next setMessages(data.messages) call.
   useEffect(() => {
-    if (data?.messages) setMessages(data.messages);
+    if (!data?.messages) return;
+    setMessages((prev) => {
+      const fetched = data.messages;
+      const fetchedIds = new Set(fetched.map((m) => m.messageId));
+      const onlyLocal = prev.filter((m) => !fetchedIds.has(m.messageId));
+      if (onlyLocal.length === 0) return fetched;
+      return [...fetched, ...onlyLocal].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
   }, [data, setMessages]);
 
   const peer = data?.peer;
