@@ -18,8 +18,7 @@ export interface VicinityResponse {
 export interface LocationUpdate {
   lat: number;
   lon: number;
-  accuracy: number;
-  ts: string;
+  accuracyMeters?: number | null;
 }
 
 export const matchesApi = {

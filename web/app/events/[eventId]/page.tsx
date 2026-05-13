@@ -8,6 +8,7 @@ import { ChevronRight, MessageCircle, MapPin } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { EventHeroCard } from "@/components/event/EventHeroCard";
+import { LocationPermissionBanner } from "@/components/event/LocationPermissionBanner";
 import { RadiusSelector } from "@/components/match/VicinityRadiusSelector";
 import { MatchCard } from "@/components/match/MatchCard";
 import { UserAvatar } from "@/components/ui/Avatar";
@@ -15,6 +16,7 @@ import { OnlineDot } from "@/components/ui/OnlineDot";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { eventsApi } from "@/lib/api/events";
+import { useEventLocationStream } from "@/lib/hooks/useEventLocationStream";
 import { useEventStore } from "@/lib/state/eventStore";
 import type { ConferenceEvent, Match } from "@/lib/fixtures/types";
 
@@ -25,6 +27,12 @@ export default function EventHomePage() {
   const radius = useEventStore((s) => s.radius);
   const setRadius = useEventStore((s) => s.setRadius);
   const setActiveEvent = useEventStore((s) => s.setActiveEvent);
+
+  // Stream the participant's location to /api/events/:id/location while this
+  // page is mounted. Vicinity rows require both peers' last_position not-null
+  // and last_update within 5 min, so without this hook the screen is always
+  // empty on a real deploy.
+  const { status: locStatus, retry: retryLocation } = useEventLocationStream(eventId);
 
   const { data: evt } = useQuery<ConferenceEvent>({
     queryKey: ["event", eventId],
@@ -64,6 +72,8 @@ export default function EventHomePage() {
         ) : (
           <Skeleton className="h-44" />
         )}
+
+        <LocationPermissionBanner status={locStatus} onRetry={retryLocation} />
 
         <div className="hairline-b pb-4">
           <p className="eyebrow mb-3 text-brass-500">Proximity</p>
@@ -146,6 +156,11 @@ export default function EventHomePage() {
                 </Link>
               );
             })}
+            {matches !== null && nearby.length === 0 && locStatus === "granted" ? (
+              <p className="py-6 text-center font-serif text-sm italic text-muted-foreground">
+                No fellows in range yet. Try a wider radius or wait for others to arrive.
+              </p>
+            ) : null}
           </div>
         </section>
 
