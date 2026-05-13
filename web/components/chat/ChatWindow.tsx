@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble";
+import { useCurrentUserId } from "@/lib/state/authStore";
 import { CURRENT_USER_ID, type ChatMessage } from "@/lib/fixtures";
 
 interface ChatWindowProps {
@@ -12,6 +13,9 @@ interface ChatWindowProps {
 
 export function ChatWindow({ messages, typing, footer }: ChatWindowProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // Real signed-in user id (token sub). Falls back to the fixture id in MSW-only dev mode
+  // where the auth store is empty and every fixture message is owned by the fixture user.
+  const currentUserId = useCurrentUserId() ?? CURRENT_USER_ID;
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -35,7 +39,7 @@ export function ChatWindow({ messages, typing, footer }: ChatWindowProps) {
           <MessageBubble
             key={m.messageId}
             message={m}
-            isMine={m.fromUserId === CURRENT_USER_ID}
+            isMine={m.fromUserId === currentUserId}
             showTime={showTime}
           />
         );
