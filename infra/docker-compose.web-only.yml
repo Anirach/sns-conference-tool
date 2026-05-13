@@ -16,6 +16,8 @@ services:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
     volumes:
-      - ../web/.next/standalone:/app:ro
+      - ../web/.next/standalone:/app
+      - ../web/.next/static:/app/.next/static:ro
+      - ../web/public:/app/public:ro
     ports:
       - "3002:3000"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -24,6 +24,7 @@ export default function EventHomePage() {
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const radius = useEventStore((s) => s.radius);
   const setRadius = useEventStore((s) => s.setRadius);
   const setActiveEvent = useEventStore((s) => s.setActiveEvent);
@@ -41,12 +42,21 @@ export default function EventHomePage() {
 
   const { data: vicinity } = useQuery({
     queryKey: ["vicinity", eventId, radius],
-    queryFn: async () => (await eventsApi.vicinity(eventId, radius)).data
+    queryFn: async () => (await eventsApi.vicinity(eventId, radius)).data,
+    enabled: locStatus === "granted",
+    refetchInterval: locStatus === "granted" ? 10_000 : false,
+    refetchOnWindowFocus: true
   });
 
   useEffect(() => {
     if (evt) setActiveEvent(evt);
   }, [evt, setActiveEvent]);
+
+  useEffect(() => {
+    if (locStatus === "granted") {
+      void queryClient.invalidateQueries({ queryKey: ["vicinity", eventId, radius] });
+    }
+  }, [eventId, locStatus, queryClient, radius]);
 
   const setRadiusMut = useMutation({
     mutationFn: (r: 20 | 50 | 100) => eventsApi.setRadius(eventId, r)
@@ -68,7 +78,7 @@ export default function EventHomePage() {
     <AppShell title="Session" eyebrow="In Residence" showBack>
       <div className="relative flex-1 space-y-6 px-5 pt-5 pb-24">
         {evt ? (
-          <EventHeroCard event={evt} attendance={matches?.length ?? undefined} />
+          <EventHeroCard event={evt} attendance={evt.attendanceCount} />
         ) : (
           <Skeleton className="h-44" />
         )}
@@ -110,11 +120,11 @@ export default function EventHomePage() {
                 ))
               : mutualTop.length > 0
               ? mutualTop.map((m, i) => (
-                  <MatchCard key={m.matchId} match={m} eventId={eventId} index={i} />
+                  <MatchCard key={m.matchId ?? m.otherUserId} match={m} eventId={eventId} index={i} />
                 ))
               : (matches ?? [])
                   .slice(0, 3)
-                  .map((m, i) => <MatchCard key={m.matchId} match={m} eventId={eventId} index={i} />)}
+                  .map((m, i) => <MatchCard key={m.matchId ?? m.otherUserId} match={m} eventId={eventId} index={i} />)}
           </div>
         </section>
 
@@ -132,7 +142,7 @@ export default function EventHomePage() {
               const parts = m.name.split(" ").filter(Boolean);
               return (
                 <Link
-                  key={m.matchId}
+                  key={m.matchId ?? m.otherUserId}
                   href={`/events/${eventId}/chat/${m.otherUserId}`}
                   className="flex items-center gap-3 py-3 hairline-b hover:bg-surface-muted"
                 >

@@ -17,7 +17,8 @@ public final class EventDtos {
         String venue,
         String expirationCode,
         String qrCode,
-        boolean expired
+        boolean expired,
+        long attendanceCount
     ) {}
 
     public record JoinRequest(@NotBlank String eventCode) {}

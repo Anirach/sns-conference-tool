@@ -31,6 +31,7 @@ export interface ConferenceEvent {
   expirationCode: string;
   qrCode: string;
   expired: boolean;
+  attendanceCount?: number;
 }
 
 export interface Participation {
@@ -41,7 +42,7 @@ export interface Participation {
 }
 
 export interface Match {
-  matchId: UUID;
+  matchId: UUID | null;
   eventId: UUID;
   otherUserId: UUID;
   name: string;

@@ -62,7 +62,7 @@ public class EventService {
     public List<EventDtos.EventDto> listJoined(UUID userId) {
         // Single JOIN query — replaces the prior N+1 (findByUserId → loop findById).
         return events.findJoinedByUserId(userId).stream()
-            .map(EventService::toDto)
+            .map(this::toDto)
             .toList();
     }
 
@@ -181,14 +181,15 @@ public class EventService {
         return false;
     }
 
-    public static EventDtos.EventDto toDto(EventEntity e) {
+    private EventDtos.EventDto toDto(EventEntity e) {
         return new EventDtos.EventDto(
             e.getEventId(),
             e.getEventName(),
             e.getVenue(),
             e.getExpirationCode().toString(),
             e.getQrCodePlaintext(),
-            e.isExpired()
+            e.isExpired(),
+            participations.countByEventId(e.getEventId())
         );
     }
 }

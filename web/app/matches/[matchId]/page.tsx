@@ -89,7 +89,7 @@ export default function MatchDetailPage() {
         {/* Hero */}
         <article className="relative hairline-b pb-6">
           <span className="absolute right-0 top-0 text-[10px] font-semibold uppercase tracking-[0.3em] text-foreground/30">
-            № {match.matchId.slice(-4)}
+            № {(match.matchId ?? match.otherUserId).slice(-4)}
           </span>
           <div className="flex items-start gap-5">
             <div className="relative">

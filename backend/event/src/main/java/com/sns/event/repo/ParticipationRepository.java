@@ -9,5 +9,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ParticipationRepository extends JpaRepository<ParticipationEntity, ParticipationId> {
     List<ParticipationEntity> findByUserId(UUID userId);
     List<ParticipationEntity> findByEventId(UUID eventId);
+    long countByEventId(UUID eventId);
     void deleteByUserIdAndEventId(UUID userId, UUID eventId);
 }

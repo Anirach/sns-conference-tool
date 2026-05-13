@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -21,9 +22,9 @@ import { UserAvatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { profileApi } from "@/lib/api/profile";
 import { getItem, setItem } from "@/lib/native/storage";
 import { useAuthStore } from "@/lib/state/authStore";
-import { currentUser } from "@/lib/fixtures/users";
 import type { UserSettings } from "@/lib/fixtures/types";
 
 const SETTINGS_KEY = "settings";
@@ -78,6 +79,10 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const signOut = useAuthStore((s) => s.signOut);
   const [settings, setSettings] = useState<UserSettings>(DEFAULTS);
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ["profile"],
+    queryFn: async () => (await profileApi.get()).data
+  });
 
   useEffect(() => {
     const raw = getItem(`settings.${SETTINGS_KEY}`);
@@ -111,18 +116,18 @@ export default function SettingsPage() {
           className="flex w-full items-center gap-4 bg-card p-4 text-left hairline hover:bg-surface-muted"
         >
           <UserAvatar
-            firstName={currentUser.firstName}
-            lastName={currentUser.lastName}
-            src={currentUser.profilePictureUrl}
+            firstName={profile?.firstName ?? ""}
+            lastName={profile?.lastName ?? ""}
+            src={profile?.profilePictureUrl}
             size={56}
           />
           <div className="min-w-0 flex-1">
-            <p className="eyebrow text-brass-500">{currentUser.academicTitle || "Fellow"}</p>
+            <p className="eyebrow text-brass-500">{profile?.academicTitle || "Fellow"}</p>
             <p className="mt-1 truncate font-serif text-base leading-tight text-foreground">
-              {currentUser.firstName} {currentUser.lastName}
+              {profileLoading ? "Loading…" : `${profile?.firstName ?? ""} ${profile?.lastName ?? ""}`.trim() || "Your profile"}
             </p>
             <p className="truncate font-serif text-xs italic text-muted-foreground">
-              {currentUser.institution}
+              {profile?.institution || profile?.email || ""}
             </p>
           </div>
           <span className="eyebrow text-brass-500">Edit</span>

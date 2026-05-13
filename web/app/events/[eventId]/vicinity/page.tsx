@@ -103,7 +103,7 @@ export default function VicinityPage() {
         ) : (
           <div className="animate-fade-in-up">
             {list.map((m, i) => (
-              <MatchCard key={m.matchId} match={m} eventId={eventId} index={i} />
+              <MatchCard key={m.matchId ?? m.otherUserId} match={m} eventId={eventId} index={i} />
             ))}
           </div>
         )}
