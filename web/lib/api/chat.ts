@@ -20,5 +20,7 @@ export const chatApi = {
   threads: () => api.get<ChatThread[]>(`/chats`),
   history: (eventId: string, otherUserId: string, since?: string) =>
     api.get<ChatHistory>(`/chat/${eventId}/${otherUserId}`, { params: since ? { since } : {} }),
+  send: (body: { eventId: string; toUserId: string; content: string; clientMessageId?: string }) =>
+    api.post<ChatMessage>(`/chat/send`, body),
   markRead: (messageId: string) => api.post<{ ok: true }>(`/chat/read`, { messageId })
 };

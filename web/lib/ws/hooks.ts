@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import type { Client } from "@stomp/stompjs";
 import { createStompClient } from "./client";
 import { mockStomp } from "./mock";
+import { chatApi } from "../api/chat";
 import { useAuthStore } from "../state/authStore";
 import { CURRENT_USER_ID, type ChatMessage, type Match } from "../fixtures";
 
@@ -78,16 +79,30 @@ export function useChat(eventId: string, otherUserId: string) {
         });
         return;
       }
-      const client = clientRef.current;
-      if (!client?.connected) return;
       const clientMessageId =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      client.publish({
-        destination: "/app/chat.send",
-        body: JSON.stringify({ eventId, toUserId: otherUserId, content: trimmed, clientMessageId })
-      });
+      const client = clientRef.current;
+      if (client?.connected) {
+        client.publish({
+          destination: "/app/chat.send",
+          body: JSON.stringify({ eventId, toUserId: otherUserId, content: trimmed, clientMessageId })
+        });
+        return;
+      }
+
+      // Fallback for environments where WebSocket/STOMP is blocked by a proxy or still reconnecting.
+      // Persist over REST and optimistically append the saved row so the sender sees it immediately.
+      void chatApi
+        .send({ eventId, toUserId: otherUserId, content: trimmed, clientMessageId })
+        .then((res) => {
+          const msg = res.data;
+          setMessages((prev) => {
+            if (prev.some((m) => m.messageId === msg.messageId)) return prev;
+            return [...prev, msg];
+          });
+        });
     },
     [eventId, otherUserId]
   );

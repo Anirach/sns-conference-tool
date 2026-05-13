@@ -41,8 +41,13 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public List<ChatDtos.ChatMessage> history(UUID eventId, UUID me, UUID other, OffsetDateTime since) {
-        return repo.findPair(eventId, me, other, since).stream()
-            .map(ChatService::toDto).toList();
+        if (me.equals(other)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "cannot chat with self");
+        }
+        var rows = since == null
+            ? repo.findPair(eventId, me, other)
+            : repo.findPairSince(eventId, me, other, since);
+        return rows.stream().map(ChatService::toDto).toList();
     }
 
     /**

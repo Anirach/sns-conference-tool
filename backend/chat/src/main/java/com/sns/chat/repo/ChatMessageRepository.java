@@ -29,10 +29,23 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
         WHERE m.eventId = :eventId
           AND ((m.fromUserId = :u1 AND m.toUserId = :u2)
             OR (m.fromUserId = :u2 AND m.toUserId = :u1))
-          AND (:since IS NULL OR m.createdAt > :since)
         ORDER BY m.createdAt ASC
         """)
     List<ChatMessageEntity> findPair(
+        @Param("eventId") UUID eventId,
+        @Param("u1") UUID u1,
+        @Param("u2") UUID u2
+    );
+
+    @Query("""
+        SELECT m FROM ChatMessageEntity m
+        WHERE m.eventId = :eventId
+          AND ((m.fromUserId = :u1 AND m.toUserId = :u2)
+            OR (m.fromUserId = :u2 AND m.toUserId = :u1))
+          AND m.createdAt > :since
+        ORDER BY m.createdAt ASC
+        """)
+    List<ChatMessageEntity> findPairSince(
         @Param("eventId") UUID eventId,
         @Param("u1") UUID u1,
         @Param("u2") UUID u2,
