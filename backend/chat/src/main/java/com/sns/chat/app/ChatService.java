@@ -72,8 +72,9 @@ public class ChatService {
 
     private List<String> lookupCommonKeywords(UUID eventId, UUID a, UUID b) {
         if (a == null || b == null) return List.of();
-        UUID lo = a.compareTo(b) < 0 ? a : b;
-        UUID hi = a.compareTo(b) < 0 ? b : a;
+        boolean aFirst = comparePostgresUuid(a, b) < 0;
+        UUID lo = aFirst ? a : b;
+        UUID hi = aFirst ? b : a;
         try {
             String[] row = jdbc.queryForObject(
                 "SELECT common_keywords FROM similarity_matches "
@@ -197,5 +198,9 @@ public class ChatService {
             m.isReadFlag(),
             m.getCreatedAt()
         );
+    }
+
+    private static int comparePostgresUuid(UUID left, UUID right) {
+        return left.toString().compareTo(right.toString());
     }
 }

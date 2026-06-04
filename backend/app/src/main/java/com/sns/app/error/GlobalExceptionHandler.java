@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Problem> handleValidation(MethodArgumentNotValidException ex) {
         String detail = ex.getBindingResult().getFieldErrors().stream()
-            .map(FieldError::toString)
+            .map(GlobalExceptionHandler::formatFieldError)
             .collect(Collectors.joining(", "));
         return build(HttpStatus.BAD_REQUEST, "Validation failed", detail);
     }
@@ -47,5 +47,10 @@ public class GlobalExceptionHandler {
 
     private static ResponseEntity<Problem> build(HttpStatus status, String title, String detail) {
         return ResponseEntity.status(status).body(Problem.of(status.value(), title, detail));
+    }
+
+    private static String formatFieldError(FieldError error) {
+        String message = error.getDefaultMessage();
+        return error.getField() + ": " + (message == null ? "invalid value" : message);
     }
 }

@@ -72,18 +72,13 @@ public class AdminUserController {
     }
 
     @DeleteMapping("/{userId}")
+    @PreAuthorize("!#hard || hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
         @PathVariable UUID userId,
         @RequestParam(defaultValue = "false") boolean hard
     ) {
         if (hard) {
-            // @PreAuthorize on a separate method would be cleaner, but we keep one route to match
-            // typical REST conventions; SUPER_ADMIN check happens via SpEL on the boolean param.
-            // (Actually we just call the service which doesn't check; rely on the matcher in
-            // SecurityConfig to gate /api/admin/** to ADMIN+, and the hard-delete service logic
-            // protects against losing the last SUPER_ADMIN. The privilege model only forbids
-            // ADMINs from deleting SUPER_ADMINs — covered by countByRole guard.)
             audit.log("admin.user.hard_deleted", null, "user", userId.toString());
             service.hardDelete(userId);
         } else {

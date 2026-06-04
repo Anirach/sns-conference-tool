@@ -1,5 +1,6 @@
 package com.sns.identity.api.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -32,7 +33,7 @@ public final class AuthDtos {
 
     public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {}
 
-    public record RefreshRequest(@NotBlank String refreshToken) {}
+    public record RefreshRequest(@JsonAlias("refresh") @NotBlank String refreshToken) {}
 
     public record AuthTokens(String accessToken, String refreshToken, UUID userId) {}
 }

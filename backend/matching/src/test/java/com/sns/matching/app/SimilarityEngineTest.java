@@ -38,14 +38,12 @@ class SimilarityEngineTest {
 
     @Test
     void commonKeywordsPreservesOrderOfFirstArgument() {
-        var a = Map.of("alpha", 1.0, "beta", 1.0, "gamma", 1.0);
+        var a = new java.util.LinkedHashMap<String, Double>();
+        a.put("alpha", 1.0);
+        a.put("beta", 1.0);
+        a.put("gamma", 1.0);
         var b = Map.of("beta", 1.0, "gamma", 1.0, "delta", 1.0);
-        var common = engine.commonKeywords(
-            new java.util.LinkedHashMap<>(java.util.Map.of("alpha", 1.0, "beta", 1.0, "gamma", 1.0)),
-            b,
-            5
-        );
-        assertThat(common).containsExactly("alpha".equals(common.get(0)) ? "alpha" : common.get(0));
-        // The engine iterates 'a' keys in encounter order; LinkedHashMap preserves that.
+        var common = engine.commonKeywords(a, b, 5);
+        assertThat(common).containsExactly("beta", "gamma");
     }
 }

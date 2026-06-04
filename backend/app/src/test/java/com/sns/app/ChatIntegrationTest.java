@@ -46,7 +46,7 @@ class ChatIntegrationTest extends IntegrationTestBase {
         String bobId = jdbc.queryForObject("SELECT user_id::text FROM users WHERE email = ?", String.class, "bob2@example.com");
 
         // Alice sends
-        mvc.perform(post("/api/chat/send").header("Authorization", "Bearer " + accessAlice)
+        String sentBody = mvc.perform(post("/api/chat/send").header("Authorization", "Bearer " + accessAlice)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of(
                     "eventId", eventId,
@@ -54,7 +54,15 @@ class ChatIntegrationTest extends IntegrationTestBase {
                     "content", "greetings, fellow"
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content").value("greetings, fellow"));
+            .andExpect(jsonPath("$.content").value("greetings, fellow"))
+            .andReturn().getResponse().getContentAsString();
+
+        String messageId = json.readTree(sentBody).get("messageId").asText();
+        mvc.perform(post("/api/chat/read").header("Authorization", "Bearer " + accessBob)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("messageId", messageId))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.ok").value(true));
 
         // Bob reads history
         String historyBody = mvc.perform(get("/api/chat/" + eventId + "/" + aliceId(jdbc))

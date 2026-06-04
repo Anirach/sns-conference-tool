@@ -9,6 +9,12 @@ application {
     mainClass.set("com.sns.app.SnsApplication")
 }
 
+dependencyManagement {
+    imports {
+        mavenBom("org.testcontainers:testcontainers-bom:1.21.4")
+    }
+}
+
 dependencies {
     implementation(project(":common"))
     implementation(project(":identity"))
@@ -46,8 +52,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.springframework.security:spring-security-test")
-    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
-    testImplementation("org.testcontainers:postgresql:1.20.4")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.4")
+    testImplementation("org.testcontainers:postgresql:1.21.4")
     testImplementation("com.redis:testcontainers-redis:2.2.2")
     testImplementation("org.awaitility:awaitility:4.2.2")
 }

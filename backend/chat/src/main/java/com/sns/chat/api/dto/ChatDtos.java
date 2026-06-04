@@ -49,7 +49,7 @@ public final class ChatDtos {
     ) {}
 
     public record MarkReadRequest(
-        @NotNull UUID eventId,
+        UUID eventId,
         @NotNull UUID messageId
     ) {}
 

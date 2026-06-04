@@ -29,6 +29,17 @@ pnpm typecheck     # tsc --noEmit
 pnpm test:e2e      # Playwright smoke (auto-starts `pnpm dev`)
 ```
 
+If port 3000 is already occupied, run E2E with an explicit free port so Playwright and
+`next dev` agree:
+
+```bash
+PORT=3200 pnpm test:e2e
+```
+
+The current route-smoke matrix is in [`docs/ROUTE-COVERAGE.md`](docs/ROUTE-COVERAGE.md).
+`web/e2e/smoke.spec.ts` blocks service workers and fulfills its small fixture API surface
+inside Playwright, so it does not depend on MSW service-worker state.
+
 ### Backend (`cd backend`)
 The Gradle wrapper (`gradlew`, `gradle/wrapper/gradle-wrapper.jar`) is committed, so:
 ```bash

@@ -98,7 +98,7 @@ public class MatchingService {
 
         int upserts = 0;
         List<UUID> userIds = new ArrayList<>(vectorByUser.keySet());
-        userIds.sort(UUID::compareTo);
+        userIds.sort(MatchingService::comparePostgresUuid);
         for (int i = 0; i < userIds.size(); i++) {
             for (int j = i + 1; j < userIds.size(); j++) {
                 if (upsertPair(eventId, userIds.get(i), userIds.get(j),
@@ -145,7 +145,7 @@ public class MatchingService {
         Map<String, Double> vFirst,
         Map<String, Double> vSecond
     ) {
-        boolean firstIsA = first.compareTo(second) < 0;
+        boolean firstIsA = comparePostgresUuid(first, second) < 0;
         UUID a = firstIsA ? first : second;
         UUID b = firstIsA ? second : first;
         Map<String, Double> va = firstIsA ? vFirst : vSecond;
@@ -191,5 +191,9 @@ public class MatchingService {
         Map<String, Double> out = new HashMap<>(v.size());
         for (var e : v.entrySet()) out.put(e.getKey(), e.getValue() / norm);
         return out;
+    }
+
+    private static int comparePostgresUuid(UUID left, UUID right) {
+        return left.toString().compareTo(right.toString());
     }
 }

@@ -10,7 +10,6 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AdminSectionNav } from "@/components/admin/AdminSectionNav";
 import { AdminTable, type ColumnDef } from "@/components/admin/Table";
 import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 
 export default function AdminEventsListPage() {
   const router = useRouter();
@@ -68,10 +67,11 @@ export default function AdminEventsListPage() {
               <span className="italic">Sessions</span>
             </h2>
           </div>
-          <Link href="/admin/events/new">
-            <Button variant="primary" size="sm">
-              <Plus className="mr-2 h-4 w-4" /> New
-            </Button>
+          <Link
+            href="/admin/events/new"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-sm bg-brand-500 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-background transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Plus className="h-4 w-4" /> New
           </Link>
         </header>
 

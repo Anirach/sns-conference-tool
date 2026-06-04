@@ -30,6 +30,7 @@ let eventRadius = 50;
 
 export type MockDomain =
   | "auth"
+  | "admin"
   | "profile"
   | "sns"
   | "interests"
@@ -349,8 +350,208 @@ export const devicesHandlers = [
   http.post(`${BASE}/devices/register`, async () => HttpResponse.json({ ok: true }))
 ];
 
+export const adminHandlers = [
+  http.get(`${BASE}/admin/ops/metrics`, async () => {
+    await delay(100);
+    return HttpResponse.json({
+      users: { total: allUsers.length, active: allUsers.length, suspended: 0, deleted24h: 0 },
+      events: {
+        active: events.filter((e) => !e.expired).length,
+        expired: events.filter((e) => e.expired).length
+      },
+      outbox: { pending: 1, failed: 1, delivered24h: 8 },
+      matches: { total: matchesForEvent(events[0].eventId, 200).length, created24h: 12 },
+      audit24h: 22
+    });
+  }),
+
+  http.get(`${BASE}/admin/events`, async () => {
+    await delay(120);
+    return HttpResponse.json({
+      items: events.map((event) => ({
+        eventId: event.eventId,
+        name: event.eventName,
+        venue: event.venue,
+        qrCode: event.qrCode,
+        expirationCode: event.expirationCode,
+        expired: event.expired,
+        participantCount: matchesForEvent(event.eventId, 200).length + 1
+      })),
+      total: events.length,
+      page: 0,
+      size: 20
+    });
+  }),
+
+  http.get(`${BASE}/admin/events/:eventId`, async ({ params }) => {
+    const event = findEvent(params.eventId as string);
+    if (!event) return new HttpResponse(null, { status: 404 });
+    return HttpResponse.json({
+      eventId: event.eventId,
+      name: event.eventName,
+      venue: event.venue,
+      qrCode: event.qrCode,
+      expirationCode: event.expirationCode,
+      expired: event.expired,
+      participantCount: matchesForEvent(event.eventId, 200).length + 1,
+      centroidLat: 13.724,
+      centroidLon: 100.56,
+      matchCount: matchesForEvent(event.eventId, 200).length,
+      messageCount: listThreads().length
+    });
+  }),
+
+  http.get(`${BASE}/admin/events/:eventId/participants`, async ({ params }) => {
+    const eventId = params.eventId as string;
+    return HttpResponse.json({
+      items: allUsers.slice(0, 8).map((user, index) => ({
+        userId: user.userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        institution: user.institution,
+        lastLat: 13.724 + index * 0.001,
+        lastLon: 100.56 + index * 0.001,
+        lastUpdate: new Date().toISOString(),
+        selectedRadius: 50
+      })),
+      total: allUsers.length,
+      page: 0,
+      size: 50
+    });
+  }),
+
+  http.get(`${BASE}/admin/events/:eventId/heatmap`, async () => {
+    return HttpResponse.json(
+      allUsers.slice(0, 8).map((_, index) => ({
+        lat: 13.724 + index * 0.001,
+        lon: 100.56 + index * 0.001,
+        lastUpdate: new Date().toISOString()
+      }))
+    );
+  }),
+
+  http.get(`${BASE}/admin/users`, async () => {
+    await delay(120);
+    return HttpResponse.json({
+      items: allUsers.map((user, index) => ({
+        userId: user.userId,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        institution: user.institution,
+        role: index === 0 ? "SUPER_ADMIN" : "USER",
+        suspended: false,
+        deleted: false,
+        createdAt: new Date(Date.now() - index * 3600_000).toISOString()
+      })),
+      total: allUsers.length,
+      page: 0,
+      size: 25
+    });
+  }),
+
+  http.get(`${BASE}/admin/users/:userId`, async ({ params }) => {
+    const user = findUser(params.userId as string);
+    if (!user) return new HttpResponse(null, { status: 404 });
+    const now = new Date().toISOString();
+    return HttpResponse.json({
+      userId: user.userId,
+      email: user.email,
+      role: user.userId === CURRENT_USER_ID ? "SUPER_ADMIN" : "USER",
+      suspended: false,
+      deleted: false,
+      createdAt: now,
+      suspendedAt: null,
+      deletedAt: null,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      academicTitle: user.academicTitle,
+      institution: user.institution,
+      profilePictureUrl: user.profilePictureUrl,
+      interests: user.userId === CURRENT_USER_ID
+        ? userInterests.map((interest) => ({
+            interestId: interest.interestId,
+            type: interest.type,
+            content: interest.content,
+            keywords: interest.extractedKeywords,
+            createdAt: interest.createdAt
+          }))
+        : [],
+      events: events.slice(0, 2).map((event) => ({
+        eventId: event.eventId,
+        name: event.eventName,
+        joinedAt: now,
+        selectedRadius: 50
+      })),
+      matchCount: matchesForEvent(events[0].eventId, 200).length,
+      chatMessageCount: listThreads().length,
+      deviceCount: 1,
+      snsLinkCount: snsLinks.length,
+      recentAudit: [
+        {
+          id: "audit-1",
+          actorUserId: CURRENT_USER_ID,
+          action: "auth.login.success",
+          resourceType: "user",
+          resourceId: user.userId,
+          payload: "{}",
+          createdAt: now
+        }
+      ]
+    });
+  }),
+
+  http.post(`${BASE}/admin/users/:userId/suspend`, async () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/admin/users/:userId/unsuspend`, async () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/admin/users/:userId/role`, async () => HttpResponse.json({ ok: true })),
+  http.delete(`${BASE}/admin/users/:userId`, async () => HttpResponse.json({ ok: true })),
+
+  http.get(`${BASE}/admin/audit`, async () => {
+    return HttpResponse.json({
+      items: [
+        {
+          id: "audit-1",
+          actorUserId: CURRENT_USER_ID,
+          action: "auth.login.success",
+          resourceType: "user",
+          resourceId: CURRENT_USER_ID,
+          payload: "{}",
+          createdAt: new Date().toISOString()
+        }
+      ],
+      total: 1,
+      page: 0,
+      size: 50
+    });
+  }),
+
+  http.get(`${BASE}/admin/ops/outbox`, async () => {
+    return HttpResponse.json({
+      items: [
+        {
+          outboxId: "outbox-1",
+          userId: CURRENT_USER_ID,
+          kind: "chat.message",
+          status: "FAILED",
+          attempts: 3,
+          lastError: "demo failure",
+          createdAt: new Date().toISOString(),
+          deliveredAt: null
+        }
+      ],
+      total: 1,
+      page: 0,
+      size: 50
+    });
+  }),
+
+  http.post(`${BASE}/admin/ops/outbox/:outboxId/retry`, async () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/admin/dev/reset-demo`, async () => HttpResponse.json({ ok: true }))
+];
+
 export const handlersByDomain: Record<MockDomain, HttpHandler[]> = {
   auth: authHandlers,
+  admin: adminHandlers,
   profile: profileHandlers,
   sns: snsHandlers,
   interests: interestsHandlers,

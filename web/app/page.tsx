@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
 
 export default function WelcomePage() {
   return (
@@ -23,10 +22,11 @@ export default function WelcomePage() {
       </div>
 
       <div className="space-y-4 pt-8 hairline-t">
-        <Link href="/register">
-          <Button size="lg" fullWidth>
-            Request Admission
-          </Button>
+        <Link
+          href="/register"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-sm bg-brand-500 px-6 text-sm font-semibold uppercase tracking-[0.18em] text-background transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          Request Admission
         </Link>
         <Link
           href="/login"

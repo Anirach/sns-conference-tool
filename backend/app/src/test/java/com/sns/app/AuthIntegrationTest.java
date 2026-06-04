@@ -80,9 +80,17 @@ class AuthIntegrationTest extends IntegrationTestBase {
         JsonNode loginTokens = json.readTree(loginResult.getResponse().getContentAsString());
         assertThat(loginTokens.get("accessToken").asText()).isNotBlank();
 
+        MvcResult aliasRefreshResult = mvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("refresh", loginTokens.get("refreshToken").asText()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isString())
+            .andReturn();
+
+        JsonNode aliasRefreshTokens = json.readTree(aliasRefreshResult.getResponse().getContentAsString());
         mvc.perform(post("/api/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("refreshToken", loginTokens.get("refreshToken").asText()))))
+                .content(json.writeValueAsString(Map.of("refreshToken", aliasRefreshTokens.get("refreshToken").asText()))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessToken").isString());
     }

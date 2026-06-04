@@ -82,9 +82,9 @@ export default function PersonalRegisterPage() {
                 {t.icon}
                 <span className="eyebrow">{t.label}</span>
               </div>
-              <p className="mt-3 font-serif text-3xl tabular-nums text-foreground">
+              <div className="mt-3 font-serif text-3xl tabular-nums text-foreground">
                 {t.loading ? <Skeleton className="h-8 w-12" /> : t.value}
-              </p>
+              </div>
             </div>
           ))}
         </div>

@@ -672,7 +672,7 @@ flowchart LR
 |---|---|---|
 | **Backend unit** | JUnit 5 | `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`, `AesGcmCipherTest`, `PiiScrubberTest`, `PasswordPolicyTest`, `PushGatewayRouterTest` |
 | **Backend integration** | Testcontainers (Postgres + Redis) | `AuthIntegrationTest`, `EventAndMatchingIntegrationTest`, `ChatIntegrationTest`, `AuditLogIntegrationTest` — all extend `IntegrationTestBase` |
-| **Web E2E** | Playwright | `web/e2e/smoke.spec.ts` walks register → verify → complete → join → vicinity → chat |
+| **Web E2E** | Playwright | `web/e2e/smoke.spec.ts` walks register → verify → complete → join and smoke-renders every public, participant, and admin App Router page. See [docs/ROUTE-COVERAGE.md](docs/ROUTE-COVERAGE.md). |
 | **Contract** | Bash + ripgrep | `tools/openapi-diff.sh` asserts every MSW route has a matching OpenAPI path |
 | **Load** | k6 | `infra/load/k6-vicinity.js` (500 RPS), `infra/load/k6-chat.js` (1000 WS at 10 msg/s) |
 | **Security** | `pnpm audit`, OWASP `dep-check`, ZAP baseline | Wired into the `security` CI job |
@@ -725,6 +725,7 @@ flowchart LR
 |---|---|
 | [docs/SNS-system.md](docs/SNS-system.md) | Authoritative spec. 20 sections: architecture, data model, API contracts, scaling, observability, GDPR, security. |
 | [CLAUDE.md](CLAUDE.md) | Contributor guide. Commands per layer, architecture deep-dive, environment gaps. |
+| [docs/ROUTE-COVERAGE.md](docs/ROUTE-COVERAGE.md) | Current Playwright route-smoke matrix, run commands, verification status. |
 | [docs/SECURITY.md](docs/SECURITY.md) | Key rotation procedures, hardening reference, residual risks, boot-time gate. |
 | [backend/README.md](backend/README.md) | Backend setup, Gradle commands, full configuration reference (~50 properties), `curl` walkthrough. |
 | [docs/User-Manual.md](docs/User-Manual.md) | End-user manual (participant + admin), with PWA install steps for iOS / Android. PDF: [docs/SNS-User-Manual.pdf](docs/SNS-User-Manual.pdf). |

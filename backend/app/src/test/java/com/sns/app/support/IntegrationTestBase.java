@@ -2,6 +2,7 @@ package com.sns.app.support;
 
 import com.redis.testcontainers.RedisContainer;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -19,6 +20,7 @@ import org.testcontainers.utility.DockerImageName;
  * {@code @SpringBootTest @AutoConfigureMockMvc @Tag("integration")}.
  */
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class IntegrationTestBase {
 
     @Container
