@@ -746,3 +746,6 @@ This repo grew via successive in-conversation rounds with a coding agent — see
 4. **No dev defaults in prod.** `ProductionSecretsCheck` enforces this at boot.
 
 License: TBD — placeholder `security@sns.example.com` until the project is formally released.
+
+
+Anirach Mingkhwan
