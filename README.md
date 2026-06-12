@@ -8,7 +8,7 @@ A responsive PWA built end-to-end as a reference implementation for [docs/SNS-sy
 |---|---|
 | **Status** | Production-ready code; awaits external creds (OAuth apps, AWS cluster) |
 | **Stack** | Next.js 14 + TypeScript (PWA) · Spring Boot 3.3 / Java 21 · PostgreSQL 15 + PostGIS · Redis 7 · Kubernetes + Helm · Terraform |
-| **Code shape** | 9-module Gradle backend, 27 React pages, 11 Flyway migrations |
+| **Code shape** | 10-module Gradle backend, 25 React pages, 12 Flyway migrations |
 | **Tests** | Unit + Testcontainers integration + Playwright E2E + k6 load |
 
 ---
@@ -172,7 +172,9 @@ sequenceDiagram
 | **Realtime chat** | STOMP/WS with JWT CONNECT auth, multi-pod fan-out via `RedisChatRelay` over 64 bucketed channels (no `PSUBSCRIBE`), idempotent send via `clientMessageId`, `@Valid` body validation |
 | **Push** | DB-backed outbox with `SELECT … FOR UPDATE SKIP LOCKED` claim, `PushGatewayRouter` → `LoggingPushGateway` (Web Push deferred to a follow-up; see *Environment gaps*) |
 | **SNS OAuth** | Facebook + LinkedIn link/callback/unlink, AES-256-GCM token crypto, scheduled enrichment job |
-| **GDPR** | `/api/users/me/export` ZIP across profile/interests/matches/chats/SNS, soft-delete + 30-day hard-delete cron, audit-log writes on every actionable path with DB-trigger immutability + 180-day prune |
+| **GDPR** | `/api/users/me/export` ZIP across profile/interests/matches/chats/SNS, soft-delete + 30-day hard-delete cron, `/me/register` self-view of held data, `/privacy` policy page, audit-log writes on every actionable path with DB-trigger immutability + 180-day prune |
+| **Admin console** | `/admin` management surface (events CRUD + venue heatmap + cipher QR, paged user dossiers, immutable audit ledger, push-outbox ops) gated by a JWT `role` claim — `ADMIN` / `SUPER_ADMIN` (Flyway V10); suspended accounts refused at login |
+| **User preferences** | `/api/profile/settings` (Flyway V12) persists per-user push / GPS-consent / keep-register / language settings; settings page wires export, soft-delete, and SNS links |
 | **Rate limiting** | Buckets for register / login (per-IP + per-email) / refresh; in-memory or Redisson backend |
 | **Transport security** | HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, `Cache-Control: no-store` on `/api/auth/**`, CORS allowlist (HTTP + STOMP from one source) |
 | **Upload safety** | MIME allowlist + magic-byte sniff on `/api/interests`, 10 MB multipart caps |
@@ -215,7 +217,7 @@ After ~3 minutes (cold build) you'll have:
 |---|---|---|
 | **sns-web** | http://localhost:3000 | Next.js 14 dev server (HMR via bind mount — edit `web/` on the host, page reloads) |
 | **sns-backend** | http://localhost:8080 | Spring Boot API. `/actuator/health`, `/.well-known/jwks.json`, `/swagger-ui.html` |
-| **sns-postgres** | localhost:5432 | PostGIS 15-3.4 — Flyway runs V1–V9 on first start |
+| **sns-postgres** | localhost:5432 | PostGIS 15-3.4 — Flyway runs V1–V12 on first start |
 | **sns-redis** | localhost:6379 | cache + Pub/Sub + Redisson rate limiter |
 | **sns-minio** | http://localhost:9001 | S3 console — login `minio` / `miniosecret` |
 | **sns-mailhog** | http://localhost:8025 | inbox where verification TANs land (dev TAN is always `123456`) |
@@ -498,6 +500,7 @@ graph TD
 ```mermaid
 erDiagram
     users ||--o| profiles : has
+    users ||--o| user_settings : configures
     users ||--o{ refresh_tokens : holds
     users ||--o{ email_verifications : claims
     users ||--o{ interests : owns
@@ -516,8 +519,18 @@ erDiagram
         citext email UK
         bool email_verified
         text password_hash "BCrypt(12)"
+        text role "USER|ADMIN|SUPER_ADMIN (V10)"
+        timestamptz suspended_at "null = active (V10)"
         timestamptz created_at
         timestamptz deleted_at "soft-delete window: 30d"
+    }
+    user_settings {
+        uuid user_id PK "FK, cascade on delete (V12)"
+        bool push_matches
+        bool push_chat
+        bool gps_consent
+        bool keep_register
+        text language "en|th|de"
     }
     interests {
         uuid interest_id PK
@@ -732,7 +745,6 @@ flowchart LR
 | [infra/load/README.md](infra/load/README.md) | k6 scenarios + run instructions. |
 | [infra/terraform/README.md](infra/terraform/README.md) | Terraform module + environment layout. |
 | [docs/runbooks/README.md](docs/runbooks/README.md) | On-call runbook index. |
-| [.claude/plans/lively-dreaming-thimble.md](.claude/plans/lively-dreaming-thimble.md) | Latest implementation plan (security hardening round). |
 
 ---
 

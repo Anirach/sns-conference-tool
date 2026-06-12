@@ -122,6 +122,7 @@ A "session" is a conference event the organiser has set up (e.g. *NeurIPS 2026 B
 What happens on join:
 - You're added to the session's roster as a **participant** with a default *50 m* visibility radius.
 - Your **GPS** is requested (permission prompt) so the app can place you on the venue floor for vicinity matching. You can decline — vicinity will simply not work for that session.
+- A **location banner** appears at the top of the event screen while permission is missing or blocked, with a **one-tap retry** so you don't have to dig through browser settings. Once granted, your position streams to the server in the background for as long as the session is open; the server quietly ignores fixes that haven't moved (closer than ~10 m within 30 s) to save battery and bandwidth.
 - Once joined, the session becomes your **active session**; tapping **Fellows** now shows live nearby fellows.
 
 You can be in multiple sessions at once. Switch between them via your *Joined* list (in v1, the most recently joined session is "active"; tap any other event card to swap).
@@ -170,6 +171,7 @@ The **Letters** tab lists every chat thread you have, most recent first.
 - Bubbles aligned right for your messages, left for theirs.
 - Type your reply in the bottom composer → press Enter (or tap the send button).
 - Messages are delivered in real time over a STOMP WebSocket — the other party sees them appear without refreshing.
+- As a safety net, an open thread also re-fetches its history every few seconds and merges it with the live socket feed, so a flaky connection never silently drops a message; the thread list itself refreshes every 15 s.
 - When you open a thread, all messages addressed to you are marked read; the unread badge clears.
 
 **Push notifications** are deferred to v2 (Web Push). For now, while the app tab is open you'll see in-app toasts when a new message or match arrives; if the tab is in the background the message still arrives — you'll see it next time you open the app.
@@ -226,6 +228,8 @@ The system is built for compliance:
 | **Export everything** | Study → Export my data | Streams a ZIP: `profile.json`, `interests.json`, `matches.json`, `chat-threads.json`, `chat-messages.json`, `sns-links.json`, `manifest.json`. |
 | **Soft-delete** | Study → Delete my account | Sets `deleted_at = now()`. You're immediately logged out and can no longer log in. |
 | **Hard-delete** | (automatic, after 30 days) | A scheduled cron permanently removes every row tied to your `user_id` (cascades wipe profile, interests, participations, matches, chat, devices, refresh tokens, SNS links). |
+| **See what's held** | `/me/register` | A read-only **personal register** that lists everything the server holds for you in one place — profile, interests, sessions joined, matches, and chat threads. |
+| **Read the policy** | `/privacy` | The plain-language privacy policy: what is kept, why, and for how long. Linked from the welcome and settings screens. |
 
 You can also ask an admin to suspend or hard-delete you immediately — see §6.4.
 

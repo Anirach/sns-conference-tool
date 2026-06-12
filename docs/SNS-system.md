@@ -12,7 +12,7 @@
 1. [Executive Summary](#1-executive-summary)
 2. [Architecture Overview](#2-architecture-overview)
 3. [Technology Stack & Rationale](#3-technology-stack--rationale)
-4. [Mobile Client App — Detailed Design (Flutter)](#4-mobile-client-app--detailed-design-flutter)
+4. [PWA Client — Detailed Design (Progressive Web App)](#4-pwa-client--detailed-design-progressive-web-app)
 5. [Web Frontend — Detailed Design (React / Next.js)](#5-web-frontend--detailed-design-react--nextjs)
 6. [Backend Server — Detailed Design (Java / Spring Boot)](#6-backend-server--detailed-design-java--spring-boot)
 7. [Database Design (PostgreSQL + PostGIS)](#7-database-design-postgresql--postgis)
@@ -36,8 +36,7 @@
 
 This document describes the detailed system implementation of the Conference Tool (SNS Tool). The system enables on-site participants at scientific conferences to discover each other based on research-interest similarity and spatial proximity, and to chat in real time. It consists of:
 
-- A cross-platform **Flutter** mobile app (Android 11+ / iOS 14+) that embeds a WebView and provides native capabilities (GPS, QR, file, push, optional SNS OAuth).
-- A **React / Next.js** web frontend rendered inside the WebView, providing the main UI and business flows.
+- A **Next.js 14** Progressive Web App that runs directly in iOS Safari / Android Chrome / desktop browsers (installable to the home screen via *Add to Home Screen*), providing the main UI and business flows. It reaches device features (GPS, camera/QR, file upload, OAuth popups) through standard web APIs — there is no native shell.
 - A **Java 21 / Spring Boot 3.x** backend exposing REST and WebSocket APIs, handling authentication, similarity computation, event lifecycle, and chat.
 - **PostgreSQL 15+** with **PostGIS** for persistent data and geospatial queries.
 - **Redis 7+** for session cache, hot GPS buffers, Pub/Sub fan-out across backend instances, rate limiting, and asynchronous job queue.
@@ -53,23 +52,16 @@ The system is designed to scale horizontally (stateless backend, Redis-coordinat
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                         Mobile Device (iOS/Android)                  │
+│                  User Device (browser — iOS/Android/desktop)         │
 │  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                      Flutter App (Dart)                        │  │
-│  │  ┌──────────────────────────────────────────────────────────┐  │  │
-│  │  │            webview_flutter (WebView)                     │  │  │
-│  │  │  ┌────────────────────────────────────────────────────┐  │  │  │
-│  │  │  │       Next.js / React UI (TypeScript)              │  │  │  │
-│  │  │  │   • Login / Profile / Interests                    │  │  │  │
-│  │  │  │   • Event join / Vicinity list / Chat              │  │  │  │
-│  │  │  └────────────────────────────────────────────────────┘  │  │  │
-│  │  └───────────────▲──────────────────────┬───────────────────┘  │  │
-│  │          JS Bridge (JavascriptChannel)  │                      │  │
-│  │  ┌───────────────┴──────────────────────▼───────────────────┐  │  │
-│  │  │ Native Modules: GPS | QR Scanner | File Picker           │  │  │
-│  │  │                 Push | Secure Storage | Local DB (Isar)  │  │  │
-│  │  │                 Facebook SDK | LinkedIn OAuth WebView    │  │  │
-│  │  └──────────────────────────────────────────────────────────┘  │  │
+│  │            PWA: Next.js / React UI (TypeScript)                │  │
+│  │   • Login / Profile / Interests                                │  │
+│  │   • Event join / Vicinity list / Chat                          │  │
+│  └──────────────────────────┬─────────────────────────────────────┘  │
+│  ┌──────────────────────────▼─────────────────────────────────────┐  │
+│  │ Browser web APIs: Geolocation | getUserMedia (QR) |            │  │
+│  │                   File input  | OAuth popup (window.open)      │  │
+│  │ Service Worker (offline shell) | localStorage (auth tokens)   │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ HTTPS (REST) + WSS (STOMP)
@@ -108,7 +100,7 @@ The system is designed to scale horizontally (stateless backend, Redis-coordinat
 
 | Layer | Responsibility | Technology |
 |-------|----------------|------------|
-| Presentation (Native) | Device-specific capabilities, WebView host | Flutter / Dart |
+| Presentation (Device) | Device-specific capabilities (GPS, camera/QR, file, OAuth popup), offline shell | Browser web APIs / Service Worker |
 | Presentation (Web) | UI, forms, lists, chat, state management | Next.js / React |
 | API Gateway | Routing, TLS, rate limiting | Nginx / Traefik / cloud LB |
 | Application | Business logic, auth, similarity, chat orchestration | Spring Boot |
@@ -120,8 +112,8 @@ The system is designed to scale horizontally (stateless backend, Redis-coordinat
 
 ### 2.3 Request Lifecycle Example — "Join Event"
 
-1. User scans QR → `mobile_scanner` (Flutter) decodes it → Dart posts a JS bridge message to the WebView.
-2. Next.js (in WebView) receives `{eventId, expirationCode}` and calls `POST /api/events/join` with the JWT.
+1. User scans the QR in-browser via `html5-qrcode` (camera through `getUserMedia`) inside `ScanCipherModal`, which decodes the plaintext cipher and hands `{eventCode}` to the join flow.
+2. Next.js calls `POST /api/events/join` with the JWT (attached from `localStorage` by the axios interceptor).
 3. Nginx terminates TLS, forwards to one of the Spring Boot instances.
 4. Spring Security validates the JWT, `EventController` receives the call.
 5. `EventService` checks expiration via PostgreSQL; if valid, writes `Participation` row, adds `userId` to `event:{id}:participants` Set in Redis.
@@ -133,314 +125,71 @@ The system is designed to scale horizontally (stateless backend, Redis-coordinat
 
 | Concern | Choice | Rationale |
 |---|---|---|
-| Mobile framework | Flutter 3.22+ (Dart 3) | Single codebase for iOS & Android; mature WebView plugin; strong ecosystem for GPS/QR/local DB. |
-| Web framework | Next.js 14+ (App Router, React 18) | SSR for fast first paint in WebView; TypeScript; Server Components reduce client JS; mature SWR/React Query ecosystem. |
+| Web framework | Next.js 14+ (App Router, React 18) | Single installable PWA for iOS / Android / desktop (Add to Home Screen + offline shell via service worker); TypeScript; Server Components reduce client JS; mature SWR/React Query ecosystem. |
 | Backend | Spring Boot 3.3 on Java 21 | Enterprise-grade, virtual threads (Project Loom) for WebSockets, first-class Spring Data JPA, Spring Security, Spring WebSocket. |
 | DB | PostgreSQL 15 + PostGIS 3.4 | ACID, mature JSONB, PostGIS for `ST_DWithin` radius queries, full-text search for keyword fallback. |
 | Cache / bus | Redis 7 (single-node → Sentinel → Cluster) | Low-latency cache, Pub/Sub for WebSocket fan-out, stream-based job queue (Redis Streams) or Redisson. |
 | Object storage | S3-compatible (AWS S3 or MinIO on-prem) | Offloads binary assets from PG; presigned URLs. |
-| Push | FCM (Android) + APNs (iOS) | Standard mobile push. |
+| Push | FCM + APNs gateways exist behind `PushGatewayRouter`, but delivery currently routes to `LoggingPushGateway`; Web Push (VAPID + service-worker handler) is deferred. `device_tokens.platform` is constrained to `'WEB'`. | Outbox rows still flow for observability; native delivery deferred. |
 | NLP / keywords | Apache OpenNLP + RAKE / TF-IDF | Pure-Java, no external GPU; good enough for keyword extraction. |
-| Build | Gradle (backend), pnpm (frontend), Flutter CLI | Standard per ecosystem. |
+| Build | Gradle (backend), npm / pnpm (frontend) | Standard per ecosystem; `package-lock.json` is committed (dev Docker image uses `npm ci`; host dev and Playwright's webServer use `pnpm`). |
 | CI/CD | GitHub Actions + Docker | Build → test → container image → deploy via Helm. |
 | Infra | Kubernetes (EKS/GKE/self-managed) | Horizontal pod autoscaling for Spring Boot; Redis Sentinel; managed PG. |
 
 ---
 
-## 4. Mobile Client App — Detailed Design (Flutter)
+## 4. PWA Client — Detailed Design (Progressive Web App)
 
-### 4.1 App Responsibilities
+### 4.1 Responsibilities
 
-The Flutter app is a **thin native shell** around the Next.js WebView, extended with device-native capabilities that the web layer cannot access directly. The web layer owns navigation, UI, and business flows; Flutter owns device integration and secure token storage.
+There is no native shell. The client is a **single installable Next.js 14 (App Router) web app** that runs unchanged in iOS Safari, Android Chrome, and desktop browsers. Users open the URL and optionally tap **Share → Add to Home Screen** for an installed-app feel (standalone display, app icon, splash). Every device capability the participant flows need is obtained directly from the browser through standard web APIs — no WebView host, no JavaScript bridge, no Dart, no native modules.
 
-### 4.2 Module Breakdown
+The same `web/` codebase is the canonical participant frontend for both iOS and Android. The backend serves it as static/SSR assets behind the load balancer; the browser is the runtime.
 
-```
-lib/
-├── main.dart
-├── app.dart                       # Root widget, theme, routing
-├── core/
-│   ├── config/                    # Environment config (dev/stage/prod URLs)
-│   ├── di/                        # get_it / riverpod providers
-│   └── logging/                   # Talker / dart:developer
-├── bridge/
-│   ├── js_bridge.dart             # JavascriptChannel handler
-│   ├── bridge_messages.dart       # Sealed classes for incoming/outgoing messages
-│   └── bridge_dispatcher.dart     # Routes bridge calls to native modules
-├── native/
-│   ├── location_service.dart      # geolocator wrapper
-│   ├── qr_scanner_service.dart    # mobile_scanner wrapper
-│   ├── file_picker_service.dart   # file_picker wrapper
-│   ├── push_service.dart          # firebase_messaging + APNs
-│   ├── secure_storage_service.dart# flutter_secure_storage (JWT, refresh)
-│   └── sns_auth_service.dart      # flutter_facebook_auth + LinkedIn webview
-├── storage/
-│   ├── isar_db.dart               # Database instance
-│   ├── schemas/
-│   │   ├── match_entity.dart      # @Collection class MatchEntity
-│   │   └── setting_entity.dart
-│   └── repositories/
-│       ├── match_repo.dart
-│       └── settings_repo.dart
-├── features/
-│   ├── webview/
-│   │   ├── webview_screen.dart    # Main WebView host screen
-│   │   └── webview_controller.dart
-│   └── splash/
-│       └── splash_screen.dart
-└── utils/
-    ├── permissions.dart           # permission_handler wrappers
-    └── error_boundary.dart
-```
+### 4.2 Device Capabilities (in-browser)
 
-### 4.3 Key Flutter Dependencies
+Each capability reaches the platform directly, with no shim:
 
-```yaml
-# pubspec.yaml (excerpt)
-dependencies:
-  flutter:
-    sdk: flutter
-  webview_flutter: ^4.7.0
-  webview_flutter_android: ^3.16.0
-  webview_flutter_wkwebview: ^3.13.0
-  geolocator: ^12.0.0
-  mobile_scanner: ^5.0.0
-  file_picker: ^8.0.0
-  permission_handler: ^11.3.0
-  flutter_secure_storage: ^9.2.0
-  isar: ^3.1.0
-  isar_flutter_libs: ^3.1.0
-  firebase_core: ^3.0.0
-  firebase_messaging: ^15.0.0
-  flutter_facebook_auth: ^7.0.0
-  flutter_riverpod: ^2.5.0
-  dio: ^5.4.0                 # for direct Flutter-side API calls (file upload, etc.)
-  path_provider: ^2.1.0
-  connectivity_plus: ^6.0.0
-  talker_flutter: ^4.4.0
-```
-
-### 4.4 WebView Setup
-
-```dart
-// features/webview/webview_screen.dart (simplified)
-class WebViewScreen extends ConsumerStatefulWidget {
-  const WebViewScreen({super.key});
-  @override
-  ConsumerState<WebViewScreen> createState() => _WebViewScreenState();
-}
-
-class _WebViewScreenState extends ConsumerState<WebViewScreen> {
-  late final WebViewController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    final bridge = ref.read(jsBridgeProvider);
-
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..addJavaScriptChannel(
-        'FlutterBridge',
-        onMessageReceived: (msg) => bridge.handleIncoming(msg.message),
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) => bridge.injectBootstrap(_controller),
-          onNavigationRequest: (req) {
-            // Block navigation away from trusted host
-            if (!req.url.startsWith(AppConfig.frontendOrigin)) {
-              launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(AppConfig.frontendOrigin));
-  }
-  ...
-}
-```
-
-### 4.5 JavaScript Bridge Protocol
-
-Bi-directional, JSON-based. Every message has `{ id, type, payload }`. The web side posts via `window.FlutterBridge.postMessage(JSON.stringify(...))`. Flutter replies by evaluating a JS callback registered under `window.__bridgeResolve[id]`.
-
-#### 4.5.1 Message Types (Web → Native)
-
-| Type | Payload | Native Action |
+| Capability | How | File |
 |---|---|---|
-| `gps.start` | `{intervalSec, minMoveMeters}` | Begin streaming locations to backend |
-| `gps.stop` | `{}` | Stop location stream |
-| `qr.scan` | `{}` | Opens scanner, returns decoded string |
-| `file.pickArticle` | `{allowedExt: ["pdf","txt"]}` | Returns file path + base64 preview |
-| `storage.get` | `{key}` | Secure-storage read (tokens) |
-| `storage.set` | `{key, value}` | Secure-storage write |
-| `localdb.matches.list` | `{limit, offset}` | Returns cached matches |
-| `localdb.matches.save` | `{match}` | Persist match in Isar |
-| `sns.login` | `{provider: "facebook" \| "linkedin"}` | OAuth flow, returns token |
-| `push.requestPermission` | `{}` | Request notification permission |
-| `push.token` | `{}` | Return current FCM/APNs token |
-| `app.info` | `{}` | Version, OS, device model |
+| Auth-token storage | `localStorage`, keys prefixed `sns.*`; persists across tab close and PWA install | `web/lib/native/storage.ts` |
+| QR scan | `html5-qrcode` (camera via `getUserMedia`, `facingMode: "environment"`); decodes the plaintext event cipher | `web/components/scan/ScanCipherModal.tsx` |
+| File upload | hidden `<input type="file" accept="application/pdf,text/plain">` | `web/app/interests/page.tsx` |
+| Geolocation | `navigator.geolocation.watchPosition` + a 30 s heartbeat, wrapped by a hook; a banner prompts/retries permission | `web/lib/hooks/useEventLocationStream.ts`, `web/components/event/LocationPermissionBanner.tsx` |
+| SNS OAuth | `window.open` popup that `postMessage`s the result back from `/api/sns/{provider}/callback` | `web/app/profile/sns/page.tsx` |
+| Offline shell / install | service worker + web manifest | `web/public/sw.js`, `web/public/manifest.webmanifest`, registered by `web/lib/pwa/register.ts` |
 
-#### 4.5.2 Message Types (Native → Web)
+### 4.3 PWA Manifest & Service Worker
 
-| Type | Payload | Web Handler |
-|---|---|---|
-| `push.received` | `{title, body, data}` | Show in-app toast / navigate |
-| `gps.error` | `{code, message}` | Toggle off GPS indicator |
-| `connectivity.change` | `{online: bool}` | Offline banner |
-| `app.resume` | `{}` | Refresh matches list |
+- **Manifest** (`web/public/manifest.webmanifest`) declares name, icons, theme color, and `display: standalone` so Add-to-Home-Screen launches the app chrome-less. On Android Chrome this enables the install prompt; on iOS Safari the user taps Share → Add to Home Screen and the page is treated as a standalone app.
+- **Service worker** (`web/public/sw.js`, cache version `v2`) is a minimal app-shell cache: it pre-caches the start URL + manifest + icons on `install`, deletes stale `sns-shell-*` caches on `activate`, serves a **network-first** strategy for navigations (falling back to the cached `/` shell offline), **cache-first with background refresh** for icons/manifest, and is strictly **network-only for `/api/*` and `/ws/*`** (auth-bearing and realtime traffic is never cached).
+- **Registration** (`web/lib/pwa/register.ts`) runs from `app/providers.tsx` only after `initMockApi()` resolves with **zero** active MSW domains — two service workers cannot share a scope, so when MSW owns the SW slot the PWA shell is suppressed. It also skips registration in dev unless `NEXT_PUBLIC_PWA_DEV=1` (Next dev HMR conflicts with cached chunks).
 
-#### 4.5.3 Bridge Implementation (Dart)
+### 4.4 Token Storage & Security Trade-off
 
-```dart
-class JsBridge {
-  final LocationService _loc;
-  final QrScannerService _qr;
-  final FilePickerService _file;
-  final SecureStorageService _store;
-  final MatchRepo _matchRepo;
-  final SnsAuthService _sns;
-  WebViewController? _controller;
+Access JWT and refresh token are kept in `localStorage` via `web/lib/native/storage.ts` (keys `sns.auth.jwt`, `sns.auth.refresh`). The helper no-ops under SSR (`window` undefined) and namespaces every key under `sns.` so it never clashes with anything else at the origin.
 
-  Future<void> handleIncoming(String raw) async {
-    final msg = jsonDecode(raw) as Map<String, dynamic>;
-    final id = msg['id'] as String;
-    final type = msg['type'] as String;
-    final payload = msg['payload'] ?? {};
-    try {
-      final result = await _dispatch(type, payload);
-      _reply(id, {'ok': true, 'data': result});
-    } catch (e, st) {
-      _reply(id, {'ok': false, 'error': e.toString()});
-      log('Bridge error', error: e, stackTrace: st);
-    }
-  }
+This is a deliberate trade-off versus the old native secure-storage (Keychain/Keystore) approach: `localStorage` is readable by any script that runs at the origin, so the security posture leans on **XSS prevention at the platform level**. Mitigations in place:
 
-  Future<Object?> _dispatch(String type, Map p) async {
-    switch (type) {
-      case 'gps.start':      return _loc.start(intervalSec: p['intervalSec'] ?? 30);
-      case 'qr.scan':        return _qr.scanOnce();
-      case 'file.pickArticle': return _file.pickArticle();
-      case 'storage.get':    return _store.read(p['key']);
-      case 'storage.set':    return _store.write(p['key'], p['value']);
-      case 'localdb.matches.list': return _matchRepo.list(limit: p['limit'], offset: p['offset']);
-      case 'localdb.matches.save': return _matchRepo.save(MatchEntity.fromJson(p['match']));
-      case 'sns.login':      return _sns.login(p['provider']);
-      default: throw UnsupportedError('Unknown bridge type: $type');
-    }
-  }
+- A strict **CSP** + **HSTS** filter on the backend (`SecurityHeadersFilter`) constrains script sources and forces TLS.
+- `Cache-Control: no-store` + `Pragma: no-cache` on every `/api/auth/**` response so a misconfigured CDN can't cache bearer tokens.
+- The storage module is the single choke-point: if tokens ever move behind a service worker (httpOnly-cookie style), only this one module changes — every caller already goes through it.
 
-  void _reply(String id, Map<String, dynamic> body) {
-    final js = 'window.__bridgeResolve["$id"](${jsonEncode(body)});';
-    _controller?.runJavaScript(js);
-  }
-}
-```
+### 4.5 Geolocation Streaming
 
-### 4.6 GPS Service
+`useEventLocationStream(eventId)` (`web/lib/hooks/useEventLocationStream.ts`) drives location while an event screen is mounted:
 
-```dart
-class LocationService {
-  StreamSubscription<Position>? _sub;
-  final Dio _dio;
-  final SecureStorageService _store;
+- An initial `getCurrentPosition` triggers the permission prompt and yields a first fix immediately; `watchPosition` then streams fresh fixes (`enableHighAccuracy`, 10 s `maximumAge`, 30 s `timeout`).
+- A 30 s heartbeat re-posts the latest known position so a stationary attendee doesn't age out of `VicinityService`'s `last_update > now() - INTERVAL '5 minutes'` freshness window.
+- Each fix `POST`s to `/api/events/{id}/location`. The backend **server-side-throttles** ingest, silently dropping fixes within 30 s **AND** < 10 m of the previous (increments `sns_location_throttled`) — so the 30 s heartbeat is the floor cadence that still bumps `last_update` for a stationary user.
+- The hook exposes `status` (`idle | prompting | granted | denied | unsupported`) and a `retry()`; `web/components/event/LocationPermissionBanner.tsx` renders the prompt/denied/retry UI.
 
-  Future<void> start({int intervalSec = 30, double minMoveMeters = 10}) async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      throw StateError('Location service disabled');
-    }
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    if (perm != LocationPermission.always && perm != LocationPermission.whileInUse) {
-      throw StateError('Permission not granted');
-    }
+### 4.6 Offline & Resilience
 
-    final settings = Platform.isAndroid
-      ? AndroidSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: minMoveMeters.toInt(),
-          intervalDuration: Duration(seconds: intervalSec),
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: 'Conference Tool', notificationText: 'Sharing your location during the event',
-            enableWakeLock: false),
-        )
-      : AppleSettings(accuracy: LocationAccuracy.high, distanceFilter: minMoveMeters.toInt(), pauseLocationUpdatesAutomatically: true);
-
-    await _sub?.cancel();
-    _sub = Geolocator.getPositionStream(locationSettings: settings).listen(_send);
-  }
-
-  Future<void> stop() async { await _sub?.cancel(); _sub = null; }
-
-  Future<void> _send(Position p) async {
-    final jwt = await _store.read('jwt');
-    final eventId = await _store.read('activeEventId');
-    if (jwt == null || eventId == null) return;
-    await _dio.post('/api/events/$eventId/location',
-      data: {'lat': p.latitude, 'lon': p.longitude, 'accuracy': p.accuracy, 'ts': DateTime.now().toUtc().toIso8601String()},
-      options: Options(headers: {'Authorization': 'Bearer $jwt'}));
-  }
-}
-```
-
-### 4.7 Local Database (Isar)
-
-```dart
-@collection
-class MatchEntity {
-  Id id = Isar.autoIncrement;
-  @Index(unique: true) late String matchId;         // server-provided UUID
-  late String eventId;
-  late String otherUserId;
-  late String otherName;
-  late String? otherTitle;
-  late String? otherInstitution;
-  late String? profilePictureUrl;
-  late List<String> commonKeywords;
-  late double similarity;
-  late DateTime matchedAt;
-}
-
-class MatchRepo {
-  final Isar _isar;
-  MatchRepo(this._isar);
-
-  Future<void> save(MatchEntity m) => _isar.writeTxn(() => _isar.matchEntitys.put(m));
-
-  Future<List<MatchEntity>> list({int limit = 50, int offset = 0}) =>
-    _isar.matchEntitys.where().sortByMatchedAtDesc().offset(offset).limit(limit).findAll();
-
-  Future<void> clearAll() => _isar.writeTxn(() => _isar.matchEntitys.clear());
-}
-```
-
-### 4.8 Push Notifications
-
-- **Firebase Core** initialised on app start.
-- On cold start, fetch FCM token (Android) / APNs token (iOS), send to backend via `POST /api/devices/register` tied to the current `userId`.
-- Handle three message states: `onMessage` (foreground → toast), `onMessageOpenedApp` (tap from background → deep link into WebView route), `onBackgroundMessage` (system tray).
-- Deep-link payload schema: `{route: "/chat/:userId" | "/matches", eventId}`. Flutter navigates the WebView to `${frontendOrigin}${route}`.
-
-### 4.9 App Lifecycle & Background Behavior
-
-| State | Behavior |
-|---|---|
-| Foreground | GPS at configured interval; WebView active; WebSocket via web layer. |
-| Background (event active) | Continue GPS updates (Android foreground service; iOS significant-change mode if battery tight). |
-| Background (no event) | GPS off. Push still received via FCM/APNs. |
-| App killed | Push received via system. Tap reopens app and routes to the deep link. |
-
-### 4.10 Error Handling & Resilience
-
-- All bridge failures bubble to the web layer as `{ok:false,error}` responses — the web UI displays user-facing toasts.
-- Dio retries 3× with exponential backoff for 5xx and network errors on idempotent endpoints (GET, PUT `/location`).
-- Connectivity changes via `connectivity_plus` pause the GPS transmitter; buffered positions (max 20 in memory) flush when online.
+- **Offline shell.** The service worker serves the cached `/` shell for navigations when the network is unavailable, so a re-open of an installed PWA renders rather than showing the browser's offline page. Auth and realtime endpoints stay network-only, so stale data is never served for them.
+- **Connectivity awareness.** The app reads `navigator.onLine` and listens for the browser `online`/`offline` events to surface an offline indicator and pause needless retries.
+- **Auth self-healing.** The axios interceptor (§5.5) silently refreshes an expired JWT once on 401; if the refresh itself fails it clears the stranded session and bounces to `/login`.
+- **Chat resilience.** The chat screen polls REST history every 4 s and merges it with WS-pushed messages, so a dropped WebSocket degrades to near-real-time rather than to a frozen thread (§5.7).
 
 ---
 
@@ -448,11 +197,11 @@ class MatchRepo {
 
 ### 5.1 Responsibilities
 
-The Next.js app renders inside the Flutter WebView and owns:
-- All user-visible screens (login, profile, interests, event join, vicinity list, chat, settings).
+The Next.js app is the installable PWA and owns:
+- All user-visible screens (login, profile, interests, event join, vicinity list, chat, settings, admin console).
 - Client-state management, forms, validation.
 - Calls to the Java backend via REST and STOMP/WebSocket.
-- Delegating device operations to Flutter via the JS bridge.
+- Reaching device capabilities (GPS, camera/QR, file, OAuth) through standard browser APIs.
 
 ### 5.2 Project Structure (App Router)
 
@@ -460,7 +209,8 @@ The Next.js app renders inside the Flutter WebView and owns:
 web/
 ├── app/
 │   ├── layout.tsx                  # Root layout, theme, providers
-│   ├── page.tsx                    # Start / welcome
+│   ├── page.tsx                    # Start / welcome (public)
+│   ├── privacy/page.tsx            # Public privacy notice
 │   ├── (auth)/
 │   │   ├── register/page.tsx
 │   │   ├── verify/page.tsx
@@ -468,50 +218,49 @@ web/
 │   ├── profile/
 │   │   ├── page.tsx                # View/edit profile
 │   │   └── sns/page.tsx            # SNS link management
-│   ├── interests/
-│   │   └── page.tsx
+│   ├── interests/page.tsx
 │   ├── events/
 │   │   ├── join/page.tsx           # QR scan trigger + manual entry
 │   │   └── [eventId]/
 │   │       ├── page.tsx            # Event home
-│   │       ├── vicinity/page.tsx   # Match list
+│   │       ├── vicinity/page.tsx   # Vicinity match list
 │   │       └── chat/[otherId]/page.tsx
+│   ├── matches/
+│   │   ├── page.tsx
+│   │   └── [matchId]/page.tsx
+│   ├── chats/page.tsx              # Thread list
 │   ├── settings/page.tsx
-│   └── api/                        # (Only lightweight BFF helpers if any)
+│   ├── me/register/page.tsx        # Self-register flow
+│   └── admin/                      # Management console (shares AppShell)
+│       ├── page.tsx                # Registry
+│       ├── events/{page,new/page,[eventId]/page}.tsx
+│       ├── users/{page,[userId]/page}.tsx
+│       ├── audit/page.tsx
+│       └── ops/page.tsx
 ├── components/
-│   ├── ui/                         # shadcn/ui re-exports
-│   ├── chat/
-│   │   ├── ChatWindow.tsx
-│   │   ├── MessageBubble.tsx
-│   │   └── MessageInput.tsx
-│   ├── match/
-│   │   ├── MatchCard.tsx
-│   │   └── VicinityRadiusSelector.tsx
-│   ├── bridge/
-│   │   └── BridgeProvider.tsx
-│   └── layout/
-│       └── AppShell.tsx
+│   ├── ui/                         # shadcn/ui (owned source)
+│   ├── chat/                       # ChatWindow, MessageBubble, MessageInput
+│   ├── match/                      # MatchCard, VicinityRadiusSelector
+│   ├── scan/ScanCipherModal.tsx    # html5-qrcode camera scanner
+│   ├── event/LocationPermissionBanner.tsx
+│   ├── admin/                      # admin widgets (CipherQrCard, …)
+│   └── layout/AppShell.tsx
 ├── lib/
-│   ├── bridge/                     # JS bridge client
-│   │   ├── client.ts
-│   │   └── types.ts
-│   ├── api/                        # REST client (fetch + React Query hooks)
+│   ├── native/storage.ts           # localStorage wrapper (sns.* keys; auth tokens)
+│   ├── hooks/useEventLocationStream.ts
+│   ├── pwa/register.ts             # registers /sw.js when MSW isn't using the SW slot
+│   ├── api/                        # REST client (axios + React Query)
 │   │   ├── axios.ts
-│   │   ├── auth.ts
-│   │   ├── events.ts
-│   │   └── chat.ts
-│   ├── ws/                         # STOMP client
-│   │   ├── client.ts
-│   │   └── hooks.ts
-│   ├── auth/                       # Token storage (delegates to bridge)
-│   ├── state/                      # Zustand stores
-│   │   ├── authStore.ts
-│   │   ├── eventStore.ts
-│   │   └── chatStore.ts
+│   │   ├── auth.ts  events.ts  interests.ts  profile.ts
+│   │   ├── settings.ts  account.ts  export.ts  admin.ts  chat.ts
+│   │   └── mocks/                  # MSW contract handlers (per-domain cutover)
+│   ├── ws/                         # STOMP client + hooks
+│   ├── state/                      # Zustand stores (authStore, eventStore, chatStore)
 │   └── utils/
-├── styles/
-│   └── globals.css
 ├── public/
+│   ├── manifest.webmanifest        # PWA manifest (Add to Home Screen)
+│   └── sw.js                       # offline-shell service worker (v2)
+├── styles/globals.css
 ├── next.config.mjs
 ├── package.json
 └── tsconfig.json
@@ -542,78 +291,66 @@ web/
 }
 ```
 
-### 5.4 Bridge Client (TypeScript)
+### 5.4 Native Capability Access
+
+There is no bridge. The app talks straight to the browser. Device features are reached through standard web APIs, and a thin module wraps each one for SSR-safety and namespacing:
 
 ```ts
-// lib/bridge/client.ts
-type BridgePayload = Record<string, unknown>;
-
-declare global {
-  interface Window {
-    FlutterBridge?: { postMessage: (msg: string) => void };
-    __bridgeResolve?: Record<string, (r: unknown) => void>;
-  }
+// lib/native/storage.ts — SSR-safe, sns.*-namespaced localStorage wrapper
+export function getItem(key: string): string | null {
+  if (typeof window === 'undefined') return null;        // no-op under SSR
+  try { return window.localStorage.getItem('sns.' + key); } catch { return null; }
 }
+export function setItem(key: string, value: string): void { /* … */ }
+export function removeItem(key: string): void { /* … */ }
 
-class BridgeClient {
-  private idCounter = 0;
-  constructor() {
-    if (typeof window !== 'undefined') {
-      window.__bridgeResolve = window.__bridgeResolve || {};
-    }
-  }
+// QR scan — html5-qrcode over getUserMedia (components/scan/ScanCipherModal.tsx)
+const instance = new Html5Qrcode(READER_ID, { verbose: false });
+await instance.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } },
+  (decodedText) => onScan(decodedText));   // decodedText is the plaintext event cipher
 
-  private nextId() { return `b_${Date.now()}_${++this.idCounter}`; }
+// Geolocation — navigator.geolocation (lib/hooks/useEventLocationStream.ts)
+navigator.geolocation.watchPosition(onSuccess, onError, { enableHighAccuracy: true });
 
-  get available() { return typeof window !== 'undefined' && !!window.FlutterBridge; }
+// File upload — a hidden native file input (app/interests/page.tsx)
+<input type="file" accept="application/pdf,text/plain" hidden onChange={onPick} />
 
-  call<T = unknown>(type: string, payload: BridgePayload = {}, timeoutMs = 15000): Promise<T> {
-    if (!this.available) return Promise.reject(new Error('Bridge unavailable (browser mode)'));
-    const id = this.nextId();
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        delete window.__bridgeResolve![id];
-        reject(new Error(`Bridge timeout: ${type}`));
-      }, timeoutMs);
-      window.__bridgeResolve![id] = (raw) => {
-        clearTimeout(timer);
-        delete window.__bridgeResolve![id];
-        const r = raw as { ok: boolean; data?: T; error?: string };
-        r.ok ? resolve(r.data as T) : reject(new Error(r.error));
-      };
-      window.FlutterBridge!.postMessage(JSON.stringify({ id, type, payload }));
-    });
-  }
-}
-export const bridge = new BridgeClient();
+// SNS OAuth — window.open popup that postMessages back from /api/sns/{provider}/callback
+const popup = window.open(`/api/sns/${provider}/start`, 'sns-oauth', 'width=600,height=720');
 ```
 
-### 5.5 Auth Strategy in WebView
+### 5.5 Auth Strategy (browser)
 
-- Backend issues a short-lived **access JWT** (15 min) + long-lived **refresh token** (30 days).
-- Tokens are **never stored in localStorage** (XSS risk inside WebView). Instead, `bridge.call('storage.set', {key:'jwt', value})` persists them in Flutter `flutter_secure_storage` (Android Keystore / iOS Keychain).
-- Each React Query / Axios request pulls the JWT via `bridge.call('storage.get', {key:'jwt'})` (cached per-render in memory).
-- 401 interceptor calls `/api/auth/refresh`, updates storage, retries original request.
+- Backend issues a short-lived **access JWT** + a long-lived **rotating refresh token**.
+- Both are stored in `localStorage` via `lib/native/storage.ts` (`sns.auth.jwt`, `sns.auth.refresh`). The security trade-off versus native secure storage, and its CSP/HSTS + `no-store` mitigations, are covered in §4.4.
+- The axios request interceptor injects `Authorization: Bearer <jwt>` from storage on every call **except** URLs matching `/auth/*` — a stale JWT would make the resource-server filter reject `POST /auth/login` with 401 *before* the permitAll login controller runs.
+- On a 401, the response interceptor silently `POST`s `/api/auth/refresh` once, stores the new pair, and retries the original request. If the refresh itself fails (token revoked, keypair rotated), it clears the stranded session and hard-redirects to `/login`.
 
 ```ts
-// lib/api/axios.ts
-const api = axios.create({ baseURL: '/api', timeout: 10000 });
-
-api.interceptors.request.use(async (cfg) => {
-  const jwt = await bridge.call<string|null>('storage.get', {key: 'jwt'}).catch(() => null);
-  if (jwt) cfg.headers.Authorization = `Bearer ${jwt}`;
+// lib/api/axios.ts (essentials)
+api.interceptors.request.use((cfg) => {
+  if (cfg.url && /^\/?auth\//.test(cfg.url)) return cfg;        // never bearer /auth/*
+  const jwt = getItem('auth.jwt');
+  if (jwt) cfg.headers.set('Authorization', `Bearer ${jwt}`);
   return cfg;
 });
 
-api.interceptors.response.use(undefined, async (err) => {
-  if (err.response?.status !== 401 || err.config.__retried) throw err;
-  const refresh = await bridge.call<string|null>('storage.get', {key: 'refresh'}).catch(() => null);
-  if (!refresh) throw err;
-  const { data } = await axios.post('/api/auth/refresh', { refresh });
-  await bridge.call('storage.set', { key: 'jwt', value: data.accessToken });
-  err.config.__retried = true;
-  err.config.headers.Authorization = `Bearer ${data.accessToken}`;
-  return api(err.config);
+api.interceptors.response.use((r) => r, async (err) => {
+  const original = err.config;
+  if (err.response?.status !== 401 || !original || original.__retried) throw err;
+  const refresh = getItem('auth.refresh');
+  if (!refresh) { clearSessionAndRedirect(); throw err; }       // → /login
+  try {
+    const { data } = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refresh });
+    setItem('auth.jwt', data.accessToken);
+    setItem('auth.refresh', data.refreshToken);
+    original.__retried = true;
+    original.headers = { ...original.headers, Authorization: `Bearer ${data.accessToken}` };
+    return api(original);
+  } catch {
+    clearSessionAndRedirect();                                   // stranded tokens → /login
+    throw err;
+  }
 });
 ```
 
@@ -623,15 +360,24 @@ api.interceptors.response.use(undefined, async (err) => {
 - **Zustand** for cross-cutting UI state (current event, online status, unread chat count).
 - **React Hook Form + Zod** for all forms (registration, profile, interests) with client-side validation mirroring backend rules.
 
-### 5.7 Real-Time Chat (STOMP client)
+### 5.7 Real-Time Chat (STOMP + REST-poll merge)
+
+The chat screen combines a live STOMP subscription with a REST history poll, so a dropped WebSocket degrades to near-real-time rather than to a frozen thread:
+
+- **STOMP.** A `@stomp/stompjs` client connects to `/ws` with the JWT (pulled from `localStorage` via `lib/native/storage.ts`) on the CONNECT frame, and subscribes to the per-user chat queue for live pushes.
+- **REST poll.** The open thread (`app/events/[eventId]/chat/[otherId]/page.tsx`) polls history every 4 s (`refetchInterval: 4000`) and **merges** it with WS-pushed messages, de-duplicating by message id. The thread list (`app/chats/page.tsx`) polls every 15 s (`refetchInterval: 15_000`).
+- **Own messages** render right-aligned, keyed off the real current user id (from the auth store), not a fixture.
+- **Idempotent send.** Each outgoing message carries a client-generated `clientMessageId`; the backend dedupes replays (e.g. a resend after a reconnect) on that key.
 
 ```ts
 // lib/ws/client.ts
 import { Client } from '@stomp/stompjs';
+import { getItem } from '@/lib/native/storage';
 
-export function createStompClient(jwt: string) {
+export function createStompClient() {
+  const jwt = getItem('auth.jwt');                  // from localStorage, not a bridge
   return new Client({
-    brokerURL: `${WS_ORIGIN}/ws`,                   // wss://api.example.com/ws
+    brokerURL: `${WS_ORIGIN}/ws`,                    // wss://api.example.com/ws
     connectHeaders: { Authorization: `Bearer ${jwt}` },
     reconnectDelay: 3000,
     heartbeatIncoming: 10_000,
@@ -640,46 +386,24 @@ export function createStompClient(jwt: string) {
   });
 }
 
-// Hook usage
-export function useChat(eventId: string, otherId: string) {
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const clientRef = useRef<Client>();
-
-  useEffect(() => {
-    (async () => {
-      const jwt = await bridge.call<string>('storage.get', { key: 'jwt' });
-      const c = createStompClient(jwt);
-      c.onConnect = () => {
-        c.subscribe(`/user/queue/chat.${eventId}`, (f) => {
-          const msg = JSON.parse(f.body) as Msg;
-          if (msg.fromUserId === otherId || msg.toUserId === otherId) {
-            setMessages((prev) => [...prev, msg]);
-          }
-        });
-      };
-      c.activate();
-      clientRef.current = c;
-    })();
-    return () => { clientRef.current?.deactivate(); };
-  }, [eventId, otherId]);
-
-  const send = (content: string) =>
-    clientRef.current?.publish({
-      destination: '/app/chat.send',
-      body: JSON.stringify({ eventId, toUserId: otherId, content }),
-    });
-
-  return { messages, send };
-}
+// In the chat page: WS subscription + REST history poll, merged.
+const { data: history } = useQuery({
+  queryKey: ['chat', eventId, otherId],
+  queryFn: () => chatApi.history(eventId, otherId),
+  refetchInterval: 4000,                             // resilient to WS drops
+});
+// messages = merge(history, wsPushed) deduped by id; send attaches a clientMessageId.
 ```
 
-### 5.8 WebView-Specific UX
+### 5.8 PWA / Mobile-Web UX
+
+These address running as an installed, standalone PWA on a phone browser:
 
 - Disable text-selection long-press menus on non-content areas via CSS `user-select: none`.
 - Hide browser scroll-bounce with `overscroll-behavior: none`.
-- Use `viewport-fit=cover` + safe-area insets to respect iOS notch.
-- Forms use native input types (`type="email"`, `inputmode="numeric"` for TAN) so Flutter shows the correct soft keyboard.
-- Offline indicator driven by `connectivity.change` bridge event — React Query pauses retries when offline.
+- Use `viewport-fit=cover` + safe-area insets to respect the iOS notch / home indicator (especially in standalone display mode).
+- Forms use native input types (`type="email"`, `inputmode="numeric"` for TAN) so the mobile browser shows the correct soft keyboard.
+- Offline indicator driven by the browser `navigator.onLine` value plus the `online`/`offline` events — React Query pauses retries when offline.
 
 ### 5.9 Accessibility
 
@@ -1279,7 +1003,7 @@ Rule: PostgreSQL is source of truth. Cache entries are **read-through with short
 
 ### 9.1 Protocol Stack
 
-- Transport: WSS at `/ws` (SockJS fallback not required inside WebView).
+- Transport: WSS at `/ws` (browsers have native WebSocket; SockJS fallback optional).
 - Framing: STOMP 1.2.
 - Auth: `Authorization: Bearer <jwt>` in CONNECT frame; validated by `ChannelInterceptor` on each message.
 
@@ -1521,7 +1245,7 @@ public class SecurityConfig {
 
 - TLS 1.3 only (config at LB).
 - HSTS: `max-age=31536000; includeSubDomains; preload`.
-- Certificate pinning in Flutter via `dio`'s `HttpClient` with a custom `badCertificateCallback` (dev) or `CertificatePinner`-style check (prod) against the production leaf + issuer SPKI.
+- The PWA runs in the browser, so it inherits the browser's TLS trust store and certificate validation; transport security is enforced at the load balancer (TLS 1.3 + HSTS preload) rather than via app-level certificate pinning.
 
 ### 11.5 Secrets & Key Management
 
@@ -1550,12 +1274,12 @@ public class SecurityConfig {
 ### 12.1 OAuth2 Flow (Facebook & LinkedIn)
 
 ```
-1. User taps "Link Facebook" in React UI.
-2. React calls bridge.call('sns.login', {provider:'facebook'}).
-3. Flutter uses flutter_facebook_auth (Facebook) or opens a WebView to LinkedIn's /authorization endpoint
-   with redirect_uri = https://api.conference-tool.example/api/sns/callback/linkedin.
-4. User authorises → provider redirects with authorization code.
-5. Flutter captures the code and calls POST /api/sns/callback {provider, code, state}.
+1. User taps "Link Facebook" in the React UI.
+2. The app opens a popup via window.open('/api/sns/facebook/start') (likewise for LinkedIn).
+3. The backend redirects the popup to the provider's /authorization endpoint
+   with redirect_uri = https://api.conference-tool.example/api/sns/facebook/callback.
+4. User authorises → provider redirects back to the callback with an authorization code.
+5. The callback page postMessages the result to the opener window, which closes the popup.
 6. Backend exchanges code for access_token + refresh_token (Spring Security OAuth2 Client).
 7. Backend fetches profile (/me for FB; /v2/me + /v2/emailAddress for LinkedIn), encrypts tokens, stores in sns_links.
 8. Backend enqueues SnsEnrichJob to fetch additional data (profile picture, positions, skills for LinkedIn).
@@ -1905,14 +1629,14 @@ spec:
 
 Per-component pipeline:
 
-| Stage | Backend | Web | Flutter |
-|---|---|---|---|
-| Lint | Spotless + Checkstyle | ESLint + Prettier | `flutter analyze` |
-| Test | JUnit + Testcontainers | Vitest + Playwright | `flutter test` + integration tests |
-| Security scan | OWASP dep-check, Trivy | npm audit, Trivy | Dart audit |
-| Build artefact | Docker image | Docker image | APK/IPA/AAB |
-| Push | GHCR | GHCR | App Store / Play Store (fastlane) |
-| Deploy | Helm upgrade on `main` to staging; tag `v*` to prod | Same | TestFlight / internal track |
+| Stage | Backend | Web |
+|---|---|---|
+| Lint | Spotless + Checkstyle | ESLint + Prettier |
+| Test | JUnit + Testcontainers | Vitest + Playwright |
+| Security scan | OWASP dep-check, Trivy | npm audit, Trivy |
+| Build artefact | Docker image | Docker image |
+| Push | GHCR | GHCR |
+| Deploy | Helm upgrade on `main` to staging; tag `v*` to prod | Same |
 
 ### 15.5 Environments
 
@@ -1973,11 +1697,11 @@ OpenTelemetry SDK, W3C trace context propagated through HTTP and STOMP headers. 
 
 | Layer | Tool | Target |
 |---|---|---|
-| Unit | JUnit 5, Mockito (BE); Vitest (Web); Dart test (Mobile) | 80% line coverage on domain/services |
+| Unit | JUnit 5, Mockito (BE); Vitest (Web) | 80% line coverage on domain/services |
 | Integration | Testcontainers (PostGIS + Redis), Spring Boot slice tests | Repository + use-case paths |
 | Contract | Spring Cloud Contract / Pact | REST + WS contracts between web and BE |
 | E2E (web) | Playwright against staging | Critical flows |
-| E2E (mobile) | Flutter integration_test on simulators/devices | Cold start → join event → chat |
+| E2E (mobile-web) | Playwright with mobile viewport / device emulation | Open app → join event → chat (incl. installed-PWA viewport) |
 | Load | k6, Gatling | Chat (1k concurrent), matching recompute |
 | Security | OWASP ZAP, dep-check | Pre-release |
 
@@ -2047,21 +1771,20 @@ class JoinEventUseCaseIT {
 | Network back | 50 ms |
 | Total (REST) | ~240 ms |
 
-### 18.4 Energy Efficiency (mobile)
+### 18.4 Energy Efficiency (mobile-web)
 
-- GPS at 30 s / 10 m minimum (requirement N-07).
-- Doze-mode compliance on Android via `ForegroundService` only during active event.
-- Suspend GPS when battery < 15% (Flutter `battery_plus`).
+- The geolocation hook watches position only while an event screen is mounted, and the backend throttle drops fixes within 30 s AND < 10 m of the previous (requirement N-07) — keeping POST traffic and GPS wake-ups to the 30 s heartbeat floor.
+- Browser-imposed limits apply: a backgrounded tab / locked phone suspends timers and `watchPosition`, so the app does not drain battery when not in the foreground (the trade-off is no true background tracking — acceptable for an on-site, foreground tool).
 
 ### 18.5 Offline Capability
 
-- Flutter stores last vicinity list in Isar; React app reads via bridge on load if REST fails.
-- Outgoing chat messages buffered locally; replayed on reconnect with client-generated `messageId` (UUID) to dedupe on server.
+- The service worker (`web/public/sw.js`) caches the app shell and serves the cached `/` for navigations when offline, so re-opening an installed PWA renders rather than showing the browser's offline page. Auth (`/api/*`) and realtime (`/ws/*`) traffic is network-only and never cached.
+- Outgoing chat messages carry a client-generated `clientMessageId` so a resend after reconnect dedupes on the server.
 
 ### 18.6 Accessibility Audit
 
 - Lighthouse a11y score target ≥ 95 on all web pages.
-- Flutter: `flutter_test`'s `SemanticsTester` covers critical widgets.
+- axe checks run in CI against the rendered pages.
 
 ---
 
@@ -2069,19 +1792,21 @@ class JoinEventUseCaseIT {
 
 ```
 conference-tool/
-├── backend/                  # Java Spring Boot
-├── web/                      # Next.js
-├── mobile/                   # Flutter
+├── backend/                  # Java Spring Boot (multi-module)
+├── web/                      # Next.js 14 PWA (participant + admin frontend)
 ├── infra/
 │   ├── helm/
 │   │   ├── backend/
 │   │   ├── web/
 │   │   └── workers/
 │   ├── terraform/            # cloud resources (VPC, RDS, Redis, S3, DNS)
+│   ├── load/                 # k6 scenarios
 │   └── docker-compose.dev.yml
+├── tools/                    # build/contract helpers (e.g. openapi-diff.sh)
 ├── docs/
 │   ├── requirements-v1.3.md
 │   ├── SNS-system.md         # this document
+│   ├── runbooks/
 │   └── architecture/
 │       └── decisions/        # ADRs
 ├── .github/
@@ -2094,10 +1819,9 @@ conference-tool/
 ## 20. Implementation Roadmap
 
 ### Milestone 1 — Foundations (Weeks 1–3)
-- Repos, CI/CD skeletons for all three apps.
+- Repos, CI/CD skeletons for backend + web.
 - Backend: Spring Boot bootstrap, Flyway schema V1-V4, JWT auth, `/api/auth/**`, `/api/profile`.
-- Web: Next.js scaffold, bridge client, auth screens.
-- Mobile: Flutter shell, WebView, bridge, secure storage.
+- Web: Next.js PWA scaffold, localStorage token store, auth screens, manifest + service-worker shell.
 - Local docker-compose environment runs end-to-end.
 
 ### Milestone 2 — Event & Matching Core (Weeks 4–7)
@@ -2106,20 +1830,17 @@ conference-tool/
 - Interest capture (text, file upload to S3, arXiv link).
 - Keyword extraction pipeline (OpenNLP + RAKE).
 - Matching service + Redis caching + `@Scheduled` job.
-- Web: interests UI, event join, vicinity list.
-- Mobile: QR scanner, GPS service.
+- Web: interests UI, event join, vicinity list, in-browser QR scanner + geolocation streaming.
 
 ### Milestone 3 — Real-time & Push (Weeks 8–10)
 - Spring WebSocket + STOMP + Redis Pub/Sub fan-out.
 - Chat REST history + WS live.
 - FCM + APNs integration; device token registration; match notifications.
-- Web: chat UI.
-- Mobile: push handling, deep links.
+- Web: chat UI (STOMP + 4 s REST-poll merge).
 
 ### Milestone 4 — Optional SNS + Hardening (Weeks 11–13)
 - OAuth2 Client config for FB + LinkedIn.
 - SNS link / unlink / enrichment jobs.
-- Local storage of matches in Isar (opt-in).
 - GDPR endpoints (export, delete).
 - Security scans (ZAP, dep-check).
 - Load tests to req N-03, N-04.
@@ -2129,7 +1850,7 @@ conference-tool/
 - Observability dashboards & alerts finalised.
 - On-call runbooks.
 - Accessibility & a11y audit.
-- Store submission (Play Store + App Store).
+- PWA install verification (Add to Home Screen on iOS Safari + Android Chrome).
 - Documentation handover.
 
 ---
@@ -2156,8 +1877,8 @@ conference-tool/
 | ADR-001 | Modular monolith over microservices | Single team, simpler ops, later extraction possible. |
 | ADR-002 | PostgreSQL + PostGIS over MongoDB + geo | Spatial correctness, joins with participations, mature stack. |
 | ADR-003 | Redis for both cache and queue | One infra component; Streams + Redisson sufficient for job scale. |
-| ADR-004 | JWT (RS256) over session cookies | Stateless backend, easy WS auth, mobile-friendly. |
-| ADR-005 | Next.js inside Flutter WebView | Re-use web talent, single UI codebase, Flutter for native bridge only. |
+| ADR-004 | JWT (RS256) over session cookies | Stateless backend, easy WS auth, works cleanly from a browser client. |
+| ADR-005 | Next.js PWA (no native shell) over a Flutter/WebView wrapper | Single UI codebase reachable from any browser; device features via standard web APIs; installable via Add to Home Screen — no app-store gatekeeping or native maintenance. |
 | ADR-006 | TF-IDF now, embeddings later | Zero-infra keyword similarity; swap via interface when justified. |
 | ADR-007 | Redis Pub/Sub relay instead of RabbitMQ STOMP broker | Avoid operating a second broker at current scale. |
 

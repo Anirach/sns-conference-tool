@@ -11,7 +11,12 @@ if any of the following holds its dev default or is unset:
 - `sns.qr.hmac-key`
 - `sns.crypto.master-key`
 - `sns.audit.ip-salt`
-- `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` (both required)
+- `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` (both required — an ephemeral dev keypair is forbidden)
+- `sns.admin.bootstrap-email` (`SNS_ADMIN_EMAIL`) — unset means no way to bootstrap a `SUPER_ADMIN`
+  and reach the `/admin` console.
+
+It also refuses to start if `sns.dev.seed-demo-data=true` (the fixture-user seeder must be off in
+prod).
 
 A failed boot logs the offending property names and points back here. Set every key listed under
 **Keys** below before promoting an environment.
@@ -48,6 +53,14 @@ A failed boot logs the offending property names and points back here. Set every 
   or matching one of ~100 entries from the SecLists / RockYou top-100 (inlined). Generic error
   message ("Password is too common or matches your email") so probing attacks can't infer which
   rule fired.
+- **Account suspension.** A suspended account (`users.suspended_at`, Flyway V10) is refused at
+  login with the *same* generic 401 as a bad password; the distinguishing signal lives only in the
+  audit row (`auth.login.suspended`), so an attacker can't tell suspension from wrong-password.
+- **Role-based admin authority.** `SnsJwtService` embeds a `role` claim (`USER` / `ADMIN` /
+  `SUPER_ADMIN`); `SecurityConfig` maps it to `ROLE_*` authorities and gates `/api/admin/**` with
+  `hasAnyRole("ADMIN","SUPER_ADMIN")`. `SUPER_ADMIN`-only operations (role change, hard delete) add
+  a `@PreAuthorize` check and refuse to demote / delete the last super-admin. The dev reset
+  endpoint is `@Profile("!prod")` so it can never start under prod.
 
 ## Transport hardening
 
@@ -72,10 +85,17 @@ A failed boot logs the offending property names and points back here. Set every 
 - **Retention.** `AuditLogPruneJob` (`@Scheduled`, default cron `0 30 3 * * *`) sets the GUC and
   pages 500-row deletes for rows older than `sns.audit.retention-days` (default 180). The prune
   job is the *only* code path that can legally DELETE.
-- **Writes.** `AuditLogger` is invoked from `AuthService` (register, verify, complete, login,
-  refresh, logout, refresh-reuse), `ProfileService` (update, soft_delete), `SnsService`
-  (link, unlink, enrich), and `ExportController` (export.download). IPs are SHA-256-salted via
-  `sns.audit.ip-salt` before storage; payloads pass through `PiiScrubber`.
+- **Writes.** `AuditLogger` is invoked from `AuthService` (`auth.register`, `auth.verify`,
+  `auth.verify.failure`, `auth.complete`, `auth.login`, `auth.login.failure`,
+  `auth.login.unverified`, `auth.login.suspended`, `auth.refresh`, `auth.refresh.reuse_detected`,
+  `auth.logout`), `ProfileService` (`profile.update`, `profile.soft_delete`,
+  `profile.settings.update`), `SnsService` (`sns.link`, `sns.unlink`, `sns.enrich`),
+  `ExportController` (`export.download`), and the admin surface — `AdminUserController`
+  (`admin.user.suspended` / `admin.user.unsuspended` / `admin.user.role_changed` /
+  `admin.user.soft_deleted` / `admin.user.hard_deleted`), `AdminEventController`
+  (`admin.event.created` / `admin.event.updated` / `admin.event.deleted`), `AdminOpsController`
+  (`admin.outbox.retry`), and `DevAdminController` (`admin.dev.reset_demo`). IPs are SHA-256-salted
+  via `sns.audit.ip-salt` before storage; payloads pass through `PiiScrubber`.
 
 ## Actuator
 

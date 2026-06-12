@@ -1,13 +1,13 @@
-# `User-Manual.pdf` build pipeline
+# `SNS-User-Manual.pdf` build pipeline
 
-This folder holds the source artefacts for [`docs/User-Manual.pdf`](../User-Manual.pdf).
+This folder holds the source artefacts for [`docs/SNS-User-Manual.pdf`](../SNS-User-Manual.pdf).
 
 ## Layout
 
 ```
 docs/
 ├── User-Manual.md          # plain-markdown source (web-friendly)
-├── User-Manual.pdf         # rendered output (Editorial Ivory style)
+├── SNS-User-Manual.pdf     # rendered output (Editorial Ivory style)
 ├── manual-screenshots/     # captured at iPhone-14-Pro viewport (390×844)
 └── manual-build/
     ├── manual.html         # styled HTML source for the PDF
@@ -33,7 +33,7 @@ npx playwright install chromium
 # pass the seeded NeurIPS event id so the admin session-detail capture targets a real event
 EVID=$(docker exec sns-postgres psql -U conf -d conf -t -A \
   -c "SELECT event_id FROM events WHERE qr_code_plaintext='NEURIPS2026'")
-NEURIPS_ID=$EVID node /Users/anirach/Code/SNS/docs/manual-build/capture.js
+NEURIPS_ID=$EVID node "$(git rev-parse --show-toplevel)/docs/manual-build/capture.js"
 ```
 
 The script logs in as Alice (regular user) for the participant captures, then logs in as Alex (`you@example.com`, super-admin) for the admin captures. Output lands in `docs/manual-screenshots/`.

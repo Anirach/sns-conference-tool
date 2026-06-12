@@ -4,15 +4,18 @@ Spring Boot 3.3 / Java 21 multi-module implementation per [docs/SNS-system.md §
 
 ## Status
 
-All five phases plus the follow-up code-completion round are in `main`. Remaining work is environment-only — see [`/CLAUDE.md`](../CLAUDE.md#environment-gaps-cannot-be-done-from-code-alone).
+All five phases plus the follow-up code-completion, performance, security-hardening, and admin-console rounds are in `main` (Flyway V1–V12). Remaining work is environment-only — see [`/CLAUDE.md`](../CLAUDE.md#environment-gaps-cannot-be-done-from-code-alone).
 
-| Phase | Highlights |
+| Phase / round | Highlights |
 |---|---|
 | 1 | Auth (register/verify/complete/login/refresh/logout), Profile, RS256 JWT + rotating refresh, JWKS, BCrypt(12), Flyway V1–V2, RFC 7807 handler, `AuditLogger` on every auth path |
 | 2 | Events + Interests + Matching, PostGIS vicinity (`ST_DWithin` + 5-min freshness, Redis-cached 10s), TF or OpenNLP keyword extraction, async recompute, HMAC-signed QR tokens, server-side location throttle, Flyway V3–V5 |
 | 3 | STOMP over WebSocket with JWT CONNECT interceptor, multi-pod `RedisChatRelay` (Pub/Sub) or `InProcessChatRelay`, idempotent chat send, push outbox routed by `PushGatewayRouter` to `FcmPushGateway` / `ApnsPushGateway` / `LoggingPushGateway`, Flyway V6 + V8 |
 | 4 | SNS OAuth (Facebook, LinkedIn) with AES-256-GCM token crypto + scheduled `SnsEnrichmentJob`, GDPR export aggregator, soft/hard-delete cron, CSP + HSTS filter, Flyway V7 |
 | 5 | `X-Request-Id` filter, JSON logs with `PiiScrubber` masking, Micrometer + OTel OTLP, 7 Prometheus alert rules, Grafana dashboard, Helm chart (Deployment/HPA/PDB/Ingress/CronJob/Redis StatefulSet/NetworkPolicy), Terraform modules, runbooks, k6 load scenarios |
+| Perf | Incremental `recomputeForUser` (O(N)), CTE-hoisted vicinity SQL (no `LEAST/GREATEST`), `listJoined` N+1 fix, paged `findAll`, `PushGatewayRouter` EnumMap dispatch, `FOR UPDATE SKIP LOCKED` outbox claim, 64 bucketed Redis chat channels (no `PSUBSCRIBE`) |
+| Security | Login + refresh rate-limit buckets (per-IP + per-email), phantom-hash for unknown emails, constant-time TAN compare, refresh-token reuse-detection family revoke, JWT `iss` + `aud` validation, `PasswordPolicy`, CORS allowlist (HTTP + STOMP), upload MIME + magic-byte sniff, `/actuator/prometheus` scrape-token gate, audit-log immutability trigger + 180-day prune (V9), `ProductionSecretsCheck` |
+| Admin + settings | Role-based admin console (`AdminEvent` / `AdminUser` / `AdminAudit` / `AdminOps` controllers), JWT `role` claim + `@PreAuthorize`, account suspension refused at login, cipher QR, dev reset endpoint, per-user `user_settings` (`/api/profile/settings`), Flyway V10 (roles + suspension) / V11 (device WEB-only) / V12 (user_settings) |
 
 ## Module layout
 
@@ -122,6 +125,8 @@ Gated by `SecurityConfig` `.requestMatchers("/api/admin/**").hasAnyRole("ADMIN",
 ## Cross-module enrichment
 
 - `/api/chats` returns enriched [`ChatDtos.ChatThread`](chat/src/main/java/com/sns/chat/api/dto/ChatDtos.java) rows (`otherName`, `otherInstitution`, `otherPictureUrl`, `lastMessagePreview`, `unread`) — built by `ChatService.listThreads` joining the per-thread head against `ProfileRepository` and counting unread messages per (event, peer). `:chat` `api`-depends on `:profile` for this.
+- `GET /api/chat/{eventId}/{otherUserId}` returns `{messages, peer}`, where `peer` is a `ChatDtos.PeerContext` carrying the other party's profile fields plus the `commonKeywords` array from `similarity_matches` (`ChatService.peerContext`, JdbcTemplate lookup) — so the chat screen renders the affinity header without a separate match call. Accepts an optional `?since=` for the 4 s history poll.
+- `/api/profile/settings` (GET/PUT) persists per-user preferences (`pushMatches`, `pushChat`, `gpsConsent`, `keepRegister`, `language`) in the `user_settings` table (Flyway V12, one row per user, FK-cascade on delete). Rows are written lazily on first GET; PUT emits a `profile.settings.update` audit row.
 
 ## End-to-end smoke (curl)
 
@@ -179,7 +184,7 @@ Integration tests all extend [`IntegrationTestBase`](app/src/test/java/com/sns/a
 - [`ChatIntegrationTest`](app/src/test/java/com/sns/app/ChatIntegrationTest.java) — chat send → history round-trip over REST + WebSocket.
 - [`AuditLogIntegrationTest`](app/src/test/java/com/sns/app/AuditLogIntegrationTest.java) — canonical auth lifecycle emits `audit_log` rows with expected action names.
 
-Unit tests per module cover the pure-logic pieces: `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`, `AesGcmCipherTest`, `PiiScrubberTest`.
+Unit tests per module cover the pure-logic pieces: `SimilarityEngineTest`, `TfKeywordExtractorTest`, `QrCodeServiceTest`, `AesGcmCipherTest`, `PiiScrubberTest`, `PasswordPolicyTest`, `PushGatewayRouterTest`.
 
 ## Running in Docker
 
@@ -211,6 +216,8 @@ Container env (set in compose, override via `.env`):
 | `sns.jwt.access-token-ttl` | `PT15M` | |
 | `sns.jwt.refresh-token-ttl` | `P30D` | |
 | `sns.verification.dev-mode` | `true` | TAN is `123456`; set false in prod |
+| `sns.verification.tan-ttl` | `PT15M` | Lifetime of an emailed verification TAN |
+| `sns.mail.from` | `no-reply@sns.local` | `From:` header on verification emails |
 | `sns.dev.seed-events` | `true` | Seed the three demo events; set false in prod |
 | `sns.dev.seed-demo-data` | `false` | Seed 20 fixture users + interests + matches + chats — login `you@example.com` / `Demo!2026`. Refused in `prod`. |
 | `sns.admin.bootstrap-email` (`SNS_ADMIN_EMAIL`) | unset | Email to promote to `SUPER_ADMIN` at boot. Required in `prod`. |
@@ -229,6 +236,9 @@ Container env (set in compose, override via `.env`):
 | `sns.location.throttle-min-move-meters` | `10` | Min distance between accepted fixes |
 | `sns.cache.vicinity-ttl-seconds` | `10` | Redis cache TTL for vicinity responses |
 | `sns.nlp.models-dir` | unset | Path to OpenNLP `en-token.bin` + `en-pos-maxent.bin` + `en-lemmatizer.dict`; when set, `OpenNlpKeywordExtractor` becomes `@Primary` |
+| `sns.storage.endpoint` | unset | S3 / MinIO endpoint for article uploads; empty = in-memory fallback (dev) |
+| `sns.storage.region` / `-bucket` | `us-east-1` / `sns-articles` | Object-store region + bucket for `ArticleStorageService` |
+| `sns.storage.access-key` / `-secret-key` | unset | S3 / MinIO credentials |
 | `sns.enrichment.enabled` | `false` | Enable the 6-hourly SNS profile enrichment sweep |
 | `sns.enrichment.cron` | `0 15 */6 * * *` | Cron for the enrichment sweep |
 | `sns.enrichment.stale-hours` | `24` | Skip links refreshed within this window |

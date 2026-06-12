@@ -127,7 +127,7 @@ Where the participant app needs platform features it talks straight to the brows
 - **Auth tokens** in `localStorage` via [`web/lib/native/storage.ts`](web/lib/native/storage.ts) (sns.* prefix). Persists across tab close and PWA install.
 - **QR scan** via [`web/components/scan/ScanCipherModal.tsx`](web/components/scan/ScanCipherModal.tsx) using `html5-qrcode` (camera through `getUserMedia`).
 - **File upload** via a hidden `<input type="file" accept="application/pdf,text/plain">` in [`web/app/interests/page.tsx`](web/app/interests/page.tsx).
-- **Geolocation** via `navigator.geolocation.watchPosition` (already wrapped by the participant location ingest path).
+- **Geolocation** via `navigator.geolocation.watchPosition`, wrapped by [`web/lib/hooks/useEventLocationStream.ts`](web/lib/hooks/useEventLocationStream.ts) — streams fixes to `POST /api/events/{id}/location` while an event is open. [`web/components/event/LocationPermissionBanner.tsx`](web/components/event/LocationPermissionBanner.tsx) prompts for (and lets the user retry) permission. The backend server-side throttle rejects fixes within 30 s AND < 10 m of the previous.
 - **SNS OAuth** via a `window.open` popup that postMessages back from `/api/sns/{provider}/callback`.
 - **PWA install + offline shell** via [`web/public/manifest.webmanifest`](web/public/manifest.webmanifest) + [`web/public/sw.js`](web/public/sw.js) registered by [`web/lib/pwa/register.ts`](web/lib/pwa/register.ts) only when MSW isn't using the SW slot.
 
@@ -141,6 +141,8 @@ Where the participant app needs platform features it talks straight to the brows
 
 ### Realtime (Phase 3)
 STOMP over WebSocket at `/ws`. The JWT is sent on the CONNECT frame's `Authorization` header; `StompJwtChannelInterceptor` validates and sets the user principal so `convertAndSendToUser(userId, ...)` reaches the right session. Fan-out goes through `ChatRelay` — `RedisChatRelay` is the default (`sns.chat.relay=redis`) and publishes each persisted message to bucketed channels (`ws:chat:bucket:{hash(userId) % 64}`) that every backend instance subscribes to with plain `SUBSCRIBE` — eliminates the `PSUBSCRIBE` pattern-match hot spot that the old per-user-channel design caused. `InProcessChatRelay` (`sns.chat.relay=inproc`) bypasses Redis for single-pod / tests. Allowed WS origins come from `sns.security.cors.allowed-origins` — empty list means same-origin only.
+
+On the web side the chat screen does not trust the WS push alone: [`web/app/events/[eventId]/chat/[otherId]/page.tsx`](web/app/events/[eventId]/chat/[otherId]/page.tsx) polls REST history every 4 s (`refetchInterval: 4000`) and merges it with WS-pushed messages, so a dropped socket never loses history; the `/chats` thread list polls every 15 s. Own messages render right-aligned, keyed off the real `currentUserId` (not a fixture). Sends carry a `clientMessageId` so a WS-then-REST race or a reconnect replay dedupes to one row.
 
 ### Matching engine (Phase 2)
 - `KeywordExtractor` (in `:interest`) is an interface with two implementations: `TfKeywordExtractor` (dependency-free TF + stopwords; default) and `OpenNlpKeywordExtractor` (`@Primary` when `sns.nlp.models-dir` is set — tokenizer → POS filter → lemmatizer → RAKE-style bigram boost). Both return an L2-normalised weight vector stored as JSONB `{keyword: weight}`.
@@ -170,6 +172,7 @@ Domain event → `NotificationService.enqueue` → `push_outbox` row (`PENDING`)
 ### GDPR (Phase 4)
 - `GET /api/users/me/export` streams a ZIP with profile.json, interests, matches, chat-threads + chat-messages, sns-links, manifest. The aggregator lives in `:app` so it can reach every module.
 - `DELETE /api/users/me` sets `deleted_at`. `HardDeleteJob` (cron `0 0 3 * * *`, configurable) removes users whose `deleted_at` is older than 30 days; FK cascades wipe profile, interests, participations, matches, chat, devices, refresh tokens, sns_links.
+- Frontend self-service: [`web/app/settings/page.tsx`](web/app/settings/page.tsx) drives export (`web/lib/api/export.ts`), soft-delete (`web/lib/api/account.ts`), and the `/api/profile/settings` preferences (`web/lib/api/settings.ts`). [`web/app/me/register/page.tsx`](web/app/me/register/page.tsx) renders a read-only "personal register" of everything held for the user on the server, and [`web/app/privacy/page.tsx`](web/app/privacy/page.tsx) is the plain-language privacy policy (what is kept and for how long).
 
 ### Observability (Phase 5)
 - `RequestIdFilter` mints/echoes `X-Request-Id`, binds to MDC key `requestId`.
